@@ -1,105 +1,136 @@
-# 招聘自动化工作台 V1 架构
+# 招聘自动化工作台 V0.9 架构
 
-## 1. 架构原则
+## 设计目标
 
-1. **岗位中心**：候选人的评估、阶段、备注和导出必须绑定岗位。
-2. **浏览器单一所有者**：Playwright Page、Context 和 Browser 只在 Browser Worker 线程中使用。
-3. **证据优先**：评估必须说明命中项、缺失项和冲突项，不能只输出一个分数。
-4. **人工确认**：缺失信息进入 REVIEW；招聘人员保留最终复核和覆盖权。
-5. **本地优先**：V1 使用本地 SQLite 和本地浏览器登录态，降低集成复杂度。
-6. **失败可诊断**：所有自动化失败必须输出错误码和诊断目录。
+1. 岗位之间的数据、评估和跟进完全隔离；
+2. 岗位画像必须经过招聘人员确认；
+3. 浏览器自动化可观察、可暂停、可人工接管、可停止；
+4. 页面变化必须留下可复现诊断；
+5. 客户没有 Google Chrome 时仍可使用工作台自带 Chromium；
+6. UI、业务服务、数据层和平台适配器保持分离。
 
-## 2. 运行结构
+## 分层
 
 ```text
-Tkinter UI
-   │
-   ├── RecruitmentService
-   │      ├── Requirement Parser
-   │      ├── Assessment Engine
-   │      └── WorkbenchDB
-   │
-   └── Command Queue
+PySide6 Desktop
+  ├── 岗位工作台
+  ├── 候选人收件箱
+  ├── 自动化任务
+  └── 系统与数据
           │
           ▼
-      Browser Worker Thread
-          ├── CandidateSearcher
-          ├── Playwright Context
-          └── Diagnostic Capture
+RecruitmentService
+  ├── 岗位画像草稿 / 确认门禁
+  ├── 搜索计划
+  ├── 候选人入池
+  └── 证据化评估
+          │
+          ├───────────────► WorkbenchDB / SQLite
+          │                  ├── jobs
+          │                  ├── sourcing_runs
+          │                  ├── candidates / snapshots
+          │                  ├── job_candidates
+          │                  ├── assessments
+          │                  ├── review_decisions
+          │                  ├── follow_ups
+          │                  └── audit_events
+          │
+          ▼
+BrowserWorker（单一线程所有权）
+  ├── command queue
+  ├── pause / resume / takeover / cancel
+  ├── page checkpoints
+  └── diagnostics
+          │
+          ▼
+ProductCandidateSearcher
+  ├── 工作台 Chromium
+  ├── Edge channel
+  ├── Chrome channel
+  ├── persistent profile
+  └── 智联页面解析适配器
 ```
 
-## 3. 数据模型
+## 岗位画像状态
 
 ```text
-jobs
-  ├── sourcing_runs
-  └── job_candidates
-         ├── assessments
-         ├── review_decisions
-         └── follow_ups
-
-candidates
-  └── candidate_snapshots
+创建 / 修改 / 重新解析
+          ↓
+        DRAFT
+          ↓ 招聘人员确认
+      CONFIRMED Vn
+          ↓ 修改任意岗位字段
+        DRAFT
 ```
 
-### 关键分离
+`DRAFT` 不允许创建正式搜索任务。每次确认增加 `profile_version`，记录确认时间和确认人。
 
-- `candidates`：候选人的跨岗位主身份和最新可见资料
-- `candidate_snapshots`：每次采集的原始快照
-- `job_candidates`：候选人与特定岗位的关系
-- `assessments`：某一版岗位画像和引擎下的评估结果
+## 浏览器所有权
 
-因此，同一个候选人可以同时属于多个岗位，但每个岗位拥有独立评估和跟进状态。
+Playwright 对象只允许在 `BrowserWorker` 线程内创建和使用。UI 通过命令队列发送：
 
-## 4. 评估状态
+- SEARCH
+- PAUSE
+- RESUME
+- TAKE_OVER
+- CANCEL
+- OPEN_URL
+- BRING_TO_FRONT
+- GET_BROWSER_STATUS
+- RESET_BROWSER
+- CLEAR_BROWSER_PROFILE
 
-| 状态 | 含义 | 系统行为 |
-|---|---|---|
-| PASS | 已有信息未发现冲突 | 排在本岗位优先复核区 |
-| REVIEW | 信息缺失或区间不确定 | 必须由招聘人员核验 |
-| CONFLICT | 有明确证据不满足硬性条件 | 显示冲突证据，仍保留人工决定 |
+暂停和取消由线程事件控制，在候选人和页面检查点协作生效。UI 不直接持有 Page、Context 或 Browser。
 
-匹配度仅用于同一岗位内部排序，不用于跨岗位比较，也不能替代人工录用决定。
+## Sidecar 而非嵌入式网页
 
-## 5. 浏览器线程边界
+V0.9 将受控浏览器作为独立窗口与工作台左右分屏，而不是用 WebView 重新承载智联页面。这样可以：
 
-UI 不得直接调用任何 Playwright 对象。所有操作通过 `BrowserCommand` 进入专用线程，结果通过 `BrowserEvent` 返回。
+- 保留完整 Playwright 协议；
+- 使用同一持久化登录 Profile；
+- 允许人工处理登录、验证码和弹窗；
+- 浏览器崩溃时独立重启；
+- 避免 WebView 与 Playwright 两套 Cookie 和运行时。
 
-支持的核心事件：
+## 搜索检查点
 
-- `STATUS`
-- `PROGRESS`
-- `NEED_LOGIN`
-- `COMPLETED`
-- `FAILED`
+每完成一页，Browser Worker 发送：
 
-失败时生成：
+```json
+{
+  "last_completed_page": 3,
+  "found_count": 87,
+  "query": "Java 后端"
+}
+```
+
+数据库保存 `last_page` 和 `checkpoint_json`。未完成任务可以从下一页重新搜索，已入池候选人通过平台 UID 或候选人指纹去重。
+
+## 浏览器运行时
+
+默认使用与固定 Playwright 版本匹配的 Chromium。构建脚本把浏览器放在 `runtime-browsers` 并打入 PyInstaller onedir 发布目录。
+
+运行顺序：
 
 ```text
-error.json
-screenshot.png
-page.html
-trace.zip
+requested managed / edge / chrome / custom
+  → requested runtime
+  → managed Chromium fallback
+  → Edge fallback
+  → Chrome fallback
 ```
 
-## 6. 数据库并发
+不使用固定 User-Agent，也不使用规避自动化检测的启动参数。
 
-每个 Repository 操作创建独立 SQLite 连接，启用：
+## 数据安全
 
-- WAL
-- foreign_keys
-- busy_timeout
-- BEGIN IMMEDIATE 写事务
+- SQLite 数据保存在 `%LOCALAPPDATA%\RecruitmentWorkbench`；
+- 浏览器 Cookie 保存在独立 `browser_profiles`；
+- 导出、人工复核和关键岗位操作写入审计表；
+- 诊断包可能包含页面内容，交付时必须限制访问并设置清理期限；
+- 数据库支持一致性备份和完整性校验恢复；
+- 年龄、性别和联系方式不进入匹配模型。
 
-禁止 UI 和 Browser Worker 长期共享同一个 SQLite Connection。
+## 发布边界
 
-## 7. 下一阶段扩展点
-
-V1 现场验收完成后，再考虑：
-
-- 智联选择器合同测试和自动健康检查
-- 候选人平台 UID 的更稳定提取
-- 安装包签名与自动更新
-- 企业 ATS 接口
-- 多账号权限与团队协作
-- 受控的其他招聘平台适配器
+V0.9 仍需在授权客户环境完成平台页面、账号权限、企业代理、安装签名、升级回滚和数据授权验证。未通过门禁前不标记为正式 GA。
