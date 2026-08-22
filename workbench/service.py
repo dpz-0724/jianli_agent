@@ -8,7 +8,7 @@ from typing import Any, Iterable
 
 from .database import WorkbenchDB
 from .evaluation import assess_candidate, build_requirement_profile
-from .models import AssessmentStatus, RequirementProfile
+from .models import AssessmentStatus, ProfileStatus, RequirementProfile, SearchPlan
 
 
 @dataclass(frozen=True)
@@ -36,6 +36,7 @@ class RecruitmentService:
         min_experience_years: int | str = 0,
         locations: str | Iterable[str] | None = None,
     ) -> RequirementProfile:
+        """Parse a profile proposal and intentionally return the job to DRAFT state."""
         profile = build_requirement_profile(
             keyword=keyword,
             jd=jd,
@@ -43,8 +44,18 @@ class RecruitmentService:
             min_experience_years=min_experience_years,
             locations=locations,
         )
-        self.db.update_job(job_id, title=title, keyword=keyword, jd=jd, profile=profile)
+        self.db.update_job(
+            job_id,
+            title=title,
+            keyword=keyword,
+            jd=jd,
+            profile=profile,
+            profile_status=ProfileStatus.DRAFT,
+        )
         return profile
+
+    def confirm_job_profile(self, job_id: int, confirmed_by: str = "") -> int:
+        return self.db.confirm_job_profile(job_id, confirmed_by=confirmed_by)
 
     def load_profile(self, job_id: int) -> RequirementProfile:
         job = self.db.get_job(job_id)
@@ -62,6 +73,22 @@ class RecruitmentService:
             payload["title_terms"] = tuple(payload.get("title_terms") or ())
             return RequirementProfile(**payload)
         return build_requirement_profile(keyword=job.get("keyword", ""), jd=job.get("jd", ""))
+
+    def assert_job_ready(self, job_id: int) -> dict[str, Any]:
+        job = self.db.get_job(job_id)
+        if not job:
+            raise KeyError(f"岗位不存在: {job_id}")
+        if job.get("profile_status") != ProfileStatus.CONFIRMED.value:
+            raise ValueError("请先确认岗位标准，再开始搜索")
+        profile = self.load_profile(job_id)
+        if not (profile.keyword or job.get("keyword") or job.get("title")):
+            raise ValueError("岗位没有可用搜索关键词")
+        return job
+
+    def create_sourcing_run(self, job_id: int, plan: SearchPlan) -> int:
+        self.assert_job_ready(job_id)
+        normalized = plan.normalized()
+        return self.db.create_sourcing_run(job_id, normalized.query, normalized)
 
     def ingest_candidates(
         self,
