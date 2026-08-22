@@ -1,0 +1,11 @@
+PID=113312
+liveness samples (every 2s): [True, True, True, True, True, True]
+
+=== WINDOWS: 4 top-level ===
+[0x240065E] class='#32770' text='信息：' children=0
+[0x15E0A22] class='_EL_HideOwner' text='' children=0
+[0x1109CC] class='MSCTFIME UI' text='MSCTFIME UI' children=0
+[0x2109A4] class='IME' text='Default IME' children=3
+    [0x8BC0AA0] 'Button' '确定'
+    [0x4D070A] 'Static' ''
+    [0x70E0AF4] 'Static' '请以管理员身份重新运行本程序'

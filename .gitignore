@@ -1,0 +1,31 @@
+# ===== 构建产物 =====
+build/
+dist/
+*.spec
+__pycache__/
+*.pyc
+
+# ===== 原程序二进制转储（超大文件，不适合入库）=====
+dumped/*.bin
+*.exe
+
+# ===== 逆向过程中间大文件（字符串/编码转储）=====
+runtime/pid*_cjk.txt
+runtime/pid*_ascii.txt
+runtime/pid*_u16.txt
+runtime/filtered_cjk.txt
+runtime/real_cjk*.txt
+strings/
+
+# ===== 本地数据与隐私（候选人数据/登录配置不上传）=====
+*.db
+*.sqlite
+config.ini
+config2.ini
+*.log
+
+# ===== 调试时的临时页面截图/快照 =====
+page_dump.html
+search_dump.html
+search_result_dump.html
+*.png

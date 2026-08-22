@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="Utf-8"?>
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+	<assemblyIdentity version="1.0.0.0" processorArchitecture="*" name="T-VMProtect" type="win32"/>
+	<file name="winmm.dll" loadFrom="%SystemRoot%\system32\winmm.dll"/>
+	<file name="lpk.dll" loadFrom="%SystemRoot%\system32\lpk.dll"/>
+	<file name="version.dll" loadFrom="%SystemRoot%\system32\version.dll"/>
+	<file name="winspool.drv" loadFrom="%SystemRoot%\system32\winspool.drv"/>
+</assembly>
