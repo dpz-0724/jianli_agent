@@ -75,11 +75,22 @@ class BrowserBot:
         user_data_dir.mkdir(parents=True, exist_ok=True)
 
         launch_kwargs = {
-            "headless": bool(self.cfg.get("hide_browser", False)),
+            # 智联风控对真 headless 返回降级结果（实测仅 1 条），必须 headed；
+            # “隐藏浏览器”改为把窗口移出屏幕，兼顾后台运行与登录扫码。
+            "headless": False,
             "viewport": {"width": 1440, "height": 900},
             "locale": "zh-CN",
-            "args": ["--start-maximized"],
+            "args": [
+                "--start-maximized",
+                "--disable-blink-features=AutomationControlled",
+            ],
         }
+        if self.cfg.get("hide_browser", False):
+            launch_kwargs["args"].append("--window-position=-2400,-2400")
+        launch_kwargs["user_agent"] = (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        )
         if browser_path:
             launch_kwargs["executable_path"] = browser_path
 
