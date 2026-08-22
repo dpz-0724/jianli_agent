@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
-"""SQLite schema and shared database helpers."""
+"""SQLite schema, migrations and shared database helpers."""
 from __future__ import annotations
 
 import os
+import sqlite3
 from datetime import datetime
 from pathlib import Path
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def now_iso() -> str:
@@ -23,12 +24,17 @@ PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS jobs (
  id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, keyword TEXT NOT NULL DEFAULT '',
  jd TEXT NOT NULL DEFAULT '', requirements_json TEXT NOT NULL DEFAULT '{}',
+ profile_status TEXT NOT NULL DEFAULT 'DRAFT', profile_version INTEGER NOT NULL DEFAULT 0,
+ confirmed_at TEXT, confirmed_by TEXT NOT NULL DEFAULT '',
  status TEXT NOT NULL DEFAULT 'ACTIVE', created_at TEXT NOT NULL, updated_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS sourcing_runs (
  id INTEGER PRIMARY KEY AUTOINCREMENT, job_id INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
  query TEXT NOT NULL, status TEXT NOT NULL, found_count INTEGER NOT NULL DEFAULT 0,
- new_count INTEGER NOT NULL DEFAULT 0, error_code TEXT, error_message TEXT, diagnostic_dir TEXT,
+ new_count INTEGER NOT NULL DEFAULT 0, max_pages INTEGER NOT NULL DEFAULT 5,
+ max_count INTEGER NOT NULL DEFAULT 200, browser_mode TEXT NOT NULL DEFAULT 'managed',
+ checkpoint_json TEXT NOT NULL DEFAULT '{}', last_page INTEGER NOT NULL DEFAULT 0,
+ error_code TEXT, error_message TEXT, diagnostic_dir TEXT,
  started_at TEXT, finished_at TEXT, created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_runs_job ON sourcing_runs(job_id,id DESC);
@@ -88,3 +94,35 @@ CREATE TABLE IF NOT EXISTS exports (
  created_at TEXT NOT NULL
 );
 """
+
+
+def _columns(conn: sqlite3.Connection, table: str) -> set[str]:
+    return {str(row[1]) for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+
+
+def migrate_schema(conn: sqlite3.Connection) -> None:
+    """Apply additive, idempotent migrations for existing local workbench databases."""
+    jobs = _columns(conn, "jobs")
+    job_columns = {
+        "profile_status": "TEXT NOT NULL DEFAULT 'DRAFT'",
+        "profile_version": "INTEGER NOT NULL DEFAULT 0",
+        "confirmed_at": "TEXT",
+        "confirmed_by": "TEXT NOT NULL DEFAULT ''",
+    }
+    for name, definition in job_columns.items():
+        if name not in jobs:
+            conn.execute(f"ALTER TABLE jobs ADD COLUMN {name} {definition}")
+
+    runs = _columns(conn, "sourcing_runs")
+    run_columns = {
+        "max_pages": "INTEGER NOT NULL DEFAULT 5",
+        "max_count": "INTEGER NOT NULL DEFAULT 200",
+        "browser_mode": "TEXT NOT NULL DEFAULT 'managed'",
+        "checkpoint_json": "TEXT NOT NULL DEFAULT '{}'",
+        "last_page": "INTEGER NOT NULL DEFAULT 0",
+    }
+    for name, definition in run_columns.items():
+        if name not in runs:
+            conn.execute(f"ALTER TABLE sourcing_runs ADD COLUMN {name} {definition}")
+
+    conn.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
