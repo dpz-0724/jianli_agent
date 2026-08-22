@@ -1,0 +1,73 @@
+# -*- coding: utf-8 -*-
+"""Deterministic demo candidates for acceptance testing without a platform account."""
+from __future__ import annotations
+
+
+def demo_candidates() -> list[dict]:
+    return [
+        {
+            "platform": "demo",
+            "platform_uid": "demo-001",
+            "name": "候选人A",
+            "title": "高级 Java 后端工程师",
+            "location": "南京",
+            "education": "本科",
+            "experience": "5年",
+            "activity": "今日活跃",
+            "skills": "Java|Spring Boot|MySQL|Redis|Docker",
+            "text": "负责交易系统后端开发，熟悉 Java、Spring Boot、MySQL、Redis 和 Docker。",
+            "source_url": "demo://candidate/001",
+        },
+        {
+            "platform": "demo",
+            "platform_uid": "demo-002",
+            "name": "候选人B",
+            "title": "Java 开发工程师",
+            "location": "南京",
+            "education": "大专",
+            "experience": "3-5年",
+            "activity": "本周活跃",
+            "skills": "Java|MySQL",
+            "text": "三年以上 Java 项目经历，参与内部管理平台开发。",
+            "source_url": "demo://candidate/002",
+        },
+        {
+            "platform": "demo",
+            "platform_uid": "demo-003",
+            "name": "候选人C",
+            "title": "Python 数据工程师",
+            "location": "上海",
+            "education": "硕士",
+            "experience": "1-3年",
+            "activity": "在线",
+            "skills": "Python|SQL|机器学习",
+            "text": "从事数据分析与机器学习项目。",
+            "source_url": "demo://candidate/003",
+        },
+        {
+            "platform": "demo",
+            "platform_uid": "demo-004",
+            "name": "候选人D",
+            "title": "Java 架构师",
+            "location": "苏州",
+            "education": "硕士",
+            "experience": "10年以上",
+            "activity": "今日活跃",
+            "skills": "Java|Spring Boot|微服务|Redis|Kubernetes",
+            "text": "十年以上研发经验，负责微服务架构、性能优化和团队技术管理。",
+            "source_url": "demo://candidate/004",
+        },
+        {
+            "platform": "demo",
+            "platform_uid": "demo-005",
+            "name": "候选人E",
+            "title": "后端开发工程师",
+            "location": "南京",
+            "education": "本科",
+            "experience": "",
+            "activity": "本月活跃",
+            "skills": "Java|Redis",
+            "text": "参与 Java 服务开发，简历摘要未标明工作年限。",
+            "source_url": "demo://candidate/005",
+        },
+    ]

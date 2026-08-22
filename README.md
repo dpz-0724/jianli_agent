@@ -1,98 +1,138 @@
-# 云只智联 · 候选人筛选排序工具
+# 招聘自动化工作台 V1
 
-> 复刻自 `云只_智联 4.3.8.exe`（VMProtect 加壳 32 位易语言程序），已**剥离原软件的全部账号/卡密/设备绑定/云同步**机制，只保留核心找人功能，并重构为更易用的产品形态。
-> 逆向过程与证据见 [`逆向分析报告.md`](逆向分析报告.md)。
+面向一线招聘人员的本地优先工作台：以“岗位”为中心连接智联招聘搜索、候选人入池、证据化评估、人工复核和跟进记录。
 
-## 这是什么
+当前版本为 **V1 Release Candidate**。它已经完成生产主链路重构和自动化测试，但真实智联页面、账号权限、平台规则及客户电脑环境仍需按验收清单进行现场验证。
 
-给一线 HR 用的智联招聘自动化工具：
+## V1 解决什么问题
 
+```text
+创建岗位
+  → 解析并确认岗位画像
+  → 智联搜索任务
+  → 候选人稳定入池与快照
+  → PASS / REVIEW / CONFLICT 证据化评估
+  → 招聘人员人工复核
+  → 跟进、面试、人才库或归档
 ```
-填关键词 / 粘贴 JD → 勾选筛人条件 → 点「开始筛选」
-  → 软件自动登录智联、搜索人才、翻页抓取候选人
-  → 按匹配度打分排序 → 输出可跟进的候选人名单
-```
 
-**两个主页面**：
-1. **筛选**：写条件（JD 一键解析出学历/经验/地点）+ 选条件 + 开始筛选（进度条 + 实时日志全程可见）
-2. **候选人排序**：按匹配分排序的结果、跟进状态标记、多人对比、CSV 导出
+### 已实现
 
-## 技术栈
-
-| 模块 | 技术 |
-|---|---|
-| GUI | tkinter + ttk（两个主页面） |
-| 浏览器自动化 | Playwright（CDP）驱动**系统已安装的 Chrome** |
-| 数据源 | 智联 `rd6.zhaopin.com/app/search` 搜索人才页（不依赖在招职位） |
-| 登录 | 持久化 user-data-dir，登录一次长期有效 |
-| 存储 | SQLite（位于 `%LOCALAPPDATA%\云只智联\yunzhi.db`） |
-| 打包 | PyInstaller onefile |
-
-## 打分模型（0~100）
-
-- **关键词匹配 40 分**：用户关键词 + JD 提取的技能/岗位词在候选人简历中的命中率
-- **条件符合度 35 分**：学历 10 + 经验 8 + 地点 7 + 年龄 5 + 性别 5
-- **活跃度 25 分**：在线 25 / 刚刚活跃 20 / 今日 15 / 本周 10 / 本月 5
-
-≥70 绿色高匹配，≥40 黄色，其余灰色。
+- 岗位隔离：不同岗位的候选人、评估、统计和导出互不污染
+- 岗位画像：必须能力、加分能力、学历、经验和地点结构化
+- 证据化评估：缺失信息进入 `REVIEW`，明确冲突进入 `CONFLICT`
+- 招聘公平性基线：年龄、性别不参与自动评估和排序
+- 候选人快照：同一候选人再次出现时更新资料并保留采集快照
+- 专用浏览器线程：Playwright 对象只在 Browser Worker 内创建和使用
+- 失败诊断：保存错误码、截图、页面 HTML、Trace 和运行元数据
+- 人工复核：招聘阶段、负责人、备注、下次跟进和复核理由
+- 岗位级 CSV 导出及审计记录
+- SQLite WAL、外键、独立连接与显式写事务
+- Windows / Linux、Python 3.10 / 3.12 的 CI 单元测试
 
 ## 目录结构
 
-```
-app.py                  主程序（GUI + 筛选流水线）
-build.bat               一键打包脚本
+```text
+app.py                     兼容启动入口
+workbench_app.py           V1 主入口
+workbench/
+  models.py                领域模型与状态机
+  evaluation.py            岗位解析与证据化评估
+  database.py              岗位中心数据库与审计
+  service.py               应用服务
+  browser_worker.py        单线程浏览器任务执行器
+  diagnostics.py           失败诊断包
+  demo.py                  离线演示数据
+  ui.py                    招聘工作台桌面界面
 code/
-  bot.py                BrowserBot：系统 Chrome 探测/启动/登录检测
-  searcher.py           候选人抓取：搜索人才翻页抓取 + IM 卡片解析
-  matcher.py            关键词提取 + 打分排序引擎
-  jd_parser.py          JD 解析（硬性条件/技能/城市）
-  db.py                 SQLite 存储（候选人池 + 跟进状态）
-  demo_data.py          演示模式模拟数据
-  *.py                  逆向辅助脚本（vmpdump/rdata 提取/接口探测）
-dumped/                 原程序 rdata 提取的选择器/URL/API 清单
-逆向分析报告.md          原软件逆向分析（VMProtect/易语言/UI 结构/技术方案）
-test_*.py               各阶段验证脚本（登录链路/跨线程/真实抓取/全流程）
+  bot.py / searcher.py     现有智联自动化适配层
+  recruitment_engine.py    V1 评估引擎兼容导出
+tests/                     领域、数据库、岗位隔离和服务测试
+docs/                      架构、验收与交付说明
 ```
 
 ## 运行
 
+### Windows 首次安装与运行
+
+首次使用：
+
 ```bat
-pip install playwright
+setup.bat
+```
+
+之后启动：
+
+```bat
+run.bat
+```
+
+### 源码运行
+
+要求 Python 3.10 或更高版本，并已安装 Chrome。
+
+```bash
+python -m pip install -r requirements.txt
 python app.py
 ```
 
-打包：`build.bat` 或
+首次进行智联搜索时，应用会打开独立浏览器窗口。完成扫码或短信登录后，回到工作台点击“登录完成，继续搜索”。登录状态保存在：
 
-```bat
-python -m PyInstaller --noconfirm --clean --onefile --windowed --name "云只智联候选人筛选排序工具" ^
-  --paths code --collect-all playwright ^
-  --hidden-import matcher --hidden-import searcher --hidden-import bot ^
-  --hidden-import db --hidden-import scripts --hidden-import demo_data ^
-  --hidden-import jd_parser app.py
+```text
+%LOCALAPPDATA%\RecruitmentWorkbench\browser_profile
 ```
 
-## 使用说明
+工作台数据保存在：
 
-1. 打开软件，「关键词」框填要找的岗位/技能（如 `Java`、`销售`）
-2. 可选：粘贴岗位 JD → 点「解析 JD 并自动填条件」；勾选学历/经验/年龄/城市等
-3. 点 **开始筛选**：
-   - 首次会弹出浏览器引导登录智联（扫码/短信），登录一次后自动记住
-   - 之后每次自动进入搜索人才页 → 输入关键词 → 翻页抓取（每次最多 5 页 / 200 人）
-4. 完成后自动跳转到「候选人排序」页，可标记跟进状态、对比、导出 CSV
+```text
+%LOCALAPPDATA%\RecruitmentWorkbench\workbench.db
+```
 
-> 未登录智联时可勾选「演示模式」体验完整流程（模拟数据）。
+失败诊断包保存在：
 
-## 与原软件的关系
+```text
+%LOCALAPPDATA%\RecruitmentWorkbench\diagnostics
+```
 
-| 维度 | 原软件 云只_智联 4.3.8 | 本复刻版 |
-|---|---|---|
-| 授权 | 卡密/账号/设备绑定 + 云端验证 | 无，直接运行 |
-| 浏览器 | 驱动外部 Chrome（CSS 选择器） | 相同思路：Playwright 驱动系统 Chrome |
-| 数据源 | 推荐人才/IM 流 | 搜索人才页（不依赖职位，更稳定） |
-| 候选人跟进 | 简单 | 状态标记 + 对比 + 导出 |
+## 测试
 
-## 注意事项
+```bash
+python -m compileall -q workbench workbench_app.py app.py
+python -m unittest discover -s tests -v
+```
 
-- 仅用于自己账号的招聘工作提效，请遵守智联招聘平台规则
-- 抓取频率已做节流，请勿用于批量爬取
-- 候选人个人信息请注意保密，勿外传
+当前自动化测试覆盖：
+
+- 两个岗位候选人和评估完全隔离
+- 经验区间不会被错误判定为满足硬性要求
+- 多城市使用“任一地点匹配”
+- 年龄、性别变化不影响评估结果
+- 重复抓取更新候选人并新增快照
+- 岗位导出不会混入其他岗位数据
+- 候选人入池后生成岗位级评估
+
+## 构建
+
+```bat
+build.bat
+```
+
+构建前会执行单元测试，成功后生成：
+
+```text
+dist\招聘自动化工作台.exe
+```
+
+## 交付边界
+
+V1 是招聘人员的决策辅助工具，不进行最终录用决策，也不应自动淘汰信息缺失的候选人。
+
+正式商用前必须完成：
+
+1. 客户账号和真实智联页面的端到端验收；
+2. 平台服务规则、数据处理授权和保存期限确认；
+3. 客户电脑上的安装、升级、备份和恢复测试；
+4. 候选人数据访问、导出、删除和审计责任确认；
+5. 生产仓库与研究/逆向材料隔离，并完成知识产权审查。
+
+详细门禁见 [`docs/DELIVERY_CHECKLIST.md`](docs/DELIVERY_CHECKLIST.md) 和 [`docs/ACCEPTANCE.md`](docs/ACCEPTANCE.md)。
