@@ -40,8 +40,7 @@ def _extract_skills(text):
 def _candidate_dedup_key(candidate):
     if candidate.get("platform_uid"):
         return "uid:" + str(candidate["platform_uid"])
-    if candidate.get("source_url"):
-        return "url:" + str(candidate["source_url"])
+    # 注意：不能用 source_url 兜底——同页候选人共享搜索页 URL，会把整页去重成 1 人。
     fields = (
         candidate.get("name", ""),
         candidate.get("title", ""),
