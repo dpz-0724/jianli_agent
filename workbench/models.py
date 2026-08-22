@@ -13,10 +13,19 @@ class JobStatus(str, Enum):
     ARCHIVED = "ARCHIVED"
 
 
+class ProfileStatus(str, Enum):
+    """A parsed profile is not authoritative until a recruiter confirms it."""
+
+    DRAFT = "DRAFT"
+    CONFIRMED = "CONFIRMED"
+
+
 class RunStatus(str, Enum):
     PENDING = "PENDING"
     RUNNING = "RUNNING"
     NEED_LOGIN = "NEED_LOGIN"
+    PAUSED = "PAUSED"
+    TAKEOVER = "TAKEOVER"
     SUCCEEDED = "SUCCEEDED"
     FAILED = "FAILED"
     CANCELLED = "CANCELLED"
@@ -41,11 +50,31 @@ class CandidateStage(str, Enum):
 
 
 @dataclass(frozen=True)
+class SearchPlan:
+    query: str
+    max_pages: int = 5
+    max_count: int = 200
+    browser_mode: str = "managed"
+    visible: bool = True
+    sidecar: bool = True
+
+    def normalized(self) -> "SearchPlan":
+        return SearchPlan(
+            query=self.query.strip(),
+            max_pages=max(1, min(int(self.max_pages), 20)),
+            max_count=max(1, min(int(self.max_count), 2000)),
+            browser_mode=(self.browser_mode or "managed").strip().lower(),
+            visible=bool(self.visible),
+            sidecar=bool(self.sidecar),
+        )
+
+
+@dataclass(frozen=True)
 class RequirementProfile:
     """Confirmed job requirement profile.
 
-    The parser may propose this structure, but a recruiter remains responsible for
-    confirming it before sourcing or assessment is treated as authoritative.
+    The parser proposes this structure. A recruiter must explicitly confirm it before a
+    sourcing task is allowed to start.
     """
 
     keyword: str = ""
