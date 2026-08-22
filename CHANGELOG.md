@@ -1,14 +1,25 @@
 # Changelog
 
-## 1.0.0-rc1
+## V0.9 Productization Alpha
 
-- 将单一候选人池重构为岗位中心数据模型
-- 增加搜索任务、候选人快照、岗位候选人关系和版本化评估
-- 接入 PASS / REVIEW / CONFLICT 证据化评估
-- 删除年龄、性别对评估和排序的影响
-- 修复经验区间误放行和多城市匹配问题
-- 使用专用 Browser Worker 隔离 Playwright 线程
-- 增加自动化失败截图、HTML、Trace 和错误元数据
-- 增加人工复核、跟进、岗位级导出和审计
-- 增加跨岗位隔离、数据更新和评估正确性测试
-- 增加 Windows / Linux CI
+- 主界面由 Tkinter 工程界面迁移到 PySide6 现代桌面工作台
+- 新增岗位画像草稿 / 明确确认门禁与版本记录
+- 新增搜索页数、人数上限和浏览器运行时配置
+- 默认支持工作台 Chromium，Edge / Chrome 作为备用
+- 新增 Sidecar 左右分屏、显示浏览器、暂停、人工接管、继续和安全停止
+- 新增按页检查点及未完成任务恢复入口
+- 候选人来源改为在同一受控浏览器 Profile 中打开
+- 移除固定 User-Agent 和自动化规避启动参数
+- 新增浏览器中心、本地设置、数据库备份恢复和登录状态清理
+- 新增 V1 数据库增量迁移
+- Playwright 与 PySide6 使用固定版本
+- 构建改为携带 Chromium 的 PyInstaller onedir 发布包
+- 扩展 Windows / Linux、Python 3.10 / 3.12 测试与桌面导入检查
+
+## V0.8 Engineering Baseline
+
+- 建立岗位中心数据模型
+- 建立候选人快照与岗位级评估
+- 新增 PASS / REVIEW / CONFLICT
+- Playwright 改为专用 Browser Worker 线程
+- 新增诊断包、审计和岗位级导出
