@@ -38,13 +38,18 @@ class DatabaseBase:
             conn.close()
 
     def _initialize(self) -> None:
-        with sqlite3.connect(self.path, timeout=30) as conn:
+        # sqlite3.Connection's context manager commits/rolls back but does not close.
+        # Explicit close is required on Windows so temporary/test databases can be deleted.
+        conn = sqlite3.connect(self.path, timeout=30)
+        try:
             conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("PRAGMA synchronous=NORMAL")
             conn.execute("PRAGMA foreign_keys=ON")
             conn.executescript(SCHEMA)
             conn.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
             conn.commit()
+        finally:
+            conn.close()
 
     def _audit_conn(
         self,
