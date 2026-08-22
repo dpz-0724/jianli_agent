@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
-import json
 import tempfile
 import unittest
 from pathlib import Path
 
 from workbench.database import WorkbenchDB
 from workbench.evaluation import assess_candidate, build_requirement_profile
+from workbench.models import SearchPlan
 
 
 class DatabaseTests(unittest.TestCase):
@@ -48,7 +48,10 @@ class DatabaseTests(unittest.TestCase):
 
     def test_second_scrape_updates_candidate_and_adds_snapshot(self):
         job = self.db.create_job("Java工程师", "Java", "")
-        run1 = self.db.create_sourcing_run(job, "Java")
+        profile = build_requirement_profile(keyword="Java", jd="熟悉Java。")
+        self.db.update_job(job, profile=profile)
+        self.db.confirm_job_profile(job)
+        run1 = self.db.create_sourcing_run(job, "Java", SearchPlan(query="Java"))
         first = {
             "platform": "zhilian",
             "platform_uid": "uid-1",
@@ -61,7 +64,7 @@ class DatabaseTests(unittest.TestCase):
         self.assertTrue(created)
         self.assertIsNotNone(snapshot1)
 
-        run2 = self.db.create_sourcing_run(job, "Java")
+        run2 = self.db.create_sourcing_run(job, "Java", SearchPlan(query="Java"))
         second = {**first, "activity": "在线", "text": "Java Redis"}
         same_id, created_again, snapshot2 = self.db.upsert_candidate(second, run2)
         self.assertEqual(candidate_id, same_id)
