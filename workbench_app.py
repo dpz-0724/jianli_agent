@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
-"""Production entrypoint for Recruitment Workbench V1."""
+"""Production entrypoint for Recruitment Workbench V0.9."""
 from __future__ import annotations
 
 import logging
+import os
 import sys
 
+from workbench.browser_runtime import configure_packaged_browser_path
 from workbench.database import default_data_dir
-from workbench.ui import WorkbenchApp
 
 
 def configure_logging() -> None:
@@ -24,18 +25,30 @@ def configure_logging() -> None:
 
 def main() -> int:
     configure_logging()
+    configure_packaged_browser_path()
+    os.environ.setdefault("QT_ENABLE_HIGHDPI_SCALING", "1")
     try:
-        app = WorkbenchApp()
-        app.mainloop()
-        return 0
-    except Exception:
+        from PySide6.QtWidgets import QApplication, QMessageBox
+        from workbench.qt_ui import RecruitmentWorkbenchWindow
+
+        application = QApplication.instance() or QApplication(sys.argv)
+        application.setApplicationName("招聘自动化工作台")
+        application.setOrganizationName("RecruitmentWorkbench")
+        application.setStyle("Fusion")
+        window = RecruitmentWorkbenchWindow()
+        window.show()
+        return int(application.exec())
+    except Exception as error:
         logging.exception("应用启动失败")
         try:
-            import tkinter.messagebox as messagebox
+            from PySide6.QtWidgets import QApplication, QMessageBox
 
-            messagebox.showerror(
+            app = QApplication.instance() or QApplication(sys.argv)
+            QMessageBox.critical(
+                None,
                 "启动失败",
-                "招聘自动化工作台启动失败。详细信息已写入本地日志目录。",
+                "招聘自动化工作台启动失败。\n\n"
+                f"{error}\n\n详细信息已写入：{default_data_dir() / 'logs' / 'workbench.log'}",
             )
         except Exception:
             pass
