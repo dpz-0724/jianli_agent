@@ -9,6 +9,7 @@ htmlcov/
 build/
 dist/
 *.spec
+runtime-browsers/
 
 # Original binary dumps and reverse-engineering intermediates
 dumped/*.bin
