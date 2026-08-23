@@ -9,7 +9,7 @@ from unittest.mock import patch
 from PySide6.QtWidgets import QApplication, QDialog
 
 from workbench.qt_job_dialog import JobCreateDialog
-from workbench.qt_workspace import ProductRecruitmentWorkbenchWindow
+from workbench.qt_workspace_runtime import RecruitmentWorkspaceWindow
 
 
 class JobCreationQtTests(unittest.TestCase):
@@ -29,10 +29,19 @@ class JobCreationQtTests(unittest.TestCase):
         self.assertEqual(dialog.values()["keyword"], "高级 Java 工程师")
         dialog.close()
 
+    def test_create_action_remains_clickable_before_login(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            window = RecruitmentWorkspaceWindow(str(Path(temp_dir) / "prelogin.db"))
+            window._update_login_ui(False, "test")
+            self.assertTrue(window.new_job_button.isEnabled())
+            self.assertTrue(window.empty_job_button.isEnabled())
+            self.assertIn("先登录", window.empty_job_button.text())
+            window.close()
+
     def test_create_button_path_persists_structured_job_draft(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "ui.db"
-            window = ProductRecruitmentWorkbenchWindow(str(db_path))
+            window = RecruitmentWorkspaceWindow(str(db_path))
             window._update_login_ui(True, "test")
 
             class AcceptedDialog:
