@@ -100,7 +100,7 @@ class DeliveryDatabaseTests(unittest.TestCase):
             ).fetchone()[0]
         self.assertTrue(actor)
 
-    def test_manual_merge_preserves_job_links_and_marks_duplicate(self):
+    def test_manual_merge_preserves_job_links_marks_duplicate_and_creates_backup(self):
         job = self.db.create_job("Java工程师")
         first_id, _, _ = self.db.upsert_candidate(
             {"platform": "demo", "platform_uid": "a", "name": "A", "title": "Java"}
@@ -118,8 +118,14 @@ class DeliveryDatabaseTests(unittest.TestCase):
             duplicate = conn.execute(
                 "SELECT merged_into_candidate_id FROM candidates WHERE id=?", (second_id,)
             ).fetchone()
+            backup_event = conn.execute(
+                "SELECT payload_json FROM audit_events WHERE event_type='CANDIDATE_MERGE_BACKUP_CREATED' ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+        backups = list((self.db_path.parent / "backups").glob("before-candidate-merge-*.db"))
         self.assertEqual(link_count, 1)
         self.assertEqual(duplicate["merged_into_candidate_id"], first_id)
+        self.assertEqual(len(backups), 1)
+        self.assertIsNotNone(backup_event)
 
 
 class RecruiterProfileTests(unittest.TestCase):
