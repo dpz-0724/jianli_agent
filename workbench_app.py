@@ -24,11 +24,7 @@ def configure_logging() -> None:
 
 
 def install_qt_exception_hook() -> None:
-    """Make exceptions raised from Qt signal handlers visible instead of silent.
-
-    Windowed PyInstaller applications do not have a console. Without an exception hook,
-    a failed button handler can look exactly like “the button did nothing”.
-    """
+    """Make exceptions raised from Qt signal handlers visible instead of silent."""
 
     def handle_exception(exc_type, exc_value, exc_traceback) -> None:
         if issubclass(exc_type, KeyboardInterrupt):
@@ -60,14 +56,14 @@ def main() -> int:
     os.environ.setdefault("QT_ENABLE_HIGHDPI_SCALING", "1")
     try:
         from PySide6.QtWidgets import QApplication, QMessageBox
-        from workbench.qt_workspace import ProductRecruitmentWorkbenchWindow
+        from workbench.qt_workspace_runtime import RecruitmentWorkspaceWindow
 
         application = QApplication.instance() or QApplication(sys.argv)
         application.setApplicationName("招聘自动化工作台")
         application.setOrganizationName("RecruitmentWorkbench")
         application.setStyle("Fusion")
         install_qt_exception_hook()
-        window = ProductRecruitmentWorkbenchWindow()
+        window = RecruitmentWorkspaceWindow()
         window.show()
         return int(application.exec())
     except Exception as error:
