@@ -7,13 +7,14 @@ from pathlib import Path
 
 from .db_base import DatabaseBase
 from .db_candidates import CandidateMixin
+from .db_delivery import DeliveryDatabaseMixin
 from .db_jobs import JobRunMixin
 from .db_reporting import ReportingMixin
 from .db_schema import default_data_dir
 
 
-class WorkbenchDB(JobRunMixin, CandidateMixin, ReportingMixin, DatabaseBase):
-    """Thread-safe, job-scoped repository composed from focused mixins."""
+class WorkbenchDB(DeliveryDatabaseMixin, JobRunMixin, CandidateMixin, ReportingMixin, DatabaseBase):
+    """Serialized, job-scoped repository with durable delivery operations."""
 
     def __init__(self, path=None):
         # SQLite ':memory:' creates a different database for every short-lived connection.
