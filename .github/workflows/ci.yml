@@ -44,7 +44,7 @@ jobs:
         run: >-
           python -c "import PySide6; import workbench_app; import workbench.ui;
           import workbench.qt_workspace_runtime; import workbench.delivery_browser;
-          import workbench.db_delivery; import workbench.product_profile;
-          print('DESKTOP_IMPORT_OK')"
+          import workbench.db_delivery; import workbench.db_product;
+          import workbench.product_profile; print('DESKTOP_IMPORT_OK')"
       - name: Run product health check
         run: python -m workbench.healthcheck
