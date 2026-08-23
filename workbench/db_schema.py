@@ -48,7 +48,6 @@ CREATE TABLE IF NOT EXISTS candidates (
  merged_into_candidate_id INTEGER REFERENCES candidates(id) ON DELETE SET NULL
 );
 CREATE INDEX IF NOT EXISTS idx_candidates_uid ON candidates(platform,platform_uid);
-CREATE INDEX IF NOT EXISTS idx_candidates_merge ON candidates(merged_into_candidate_id);
 CREATE TABLE IF NOT EXISTS candidate_identities (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  candidate_id INTEGER NOT NULL REFERENCES candidates(id) ON DELETE CASCADE,
