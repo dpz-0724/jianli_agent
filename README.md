@@ -135,7 +135,7 @@ build.bat
 
 ```text
 dist\招聘自动化工作台\招聘自动化工作台.exe
-dist\招聘自动化工作台-v0.9.zip
+dist\招聘自动化工作台-v0.9.1-Pilot.zip
 ```
 
 GitHub 还提供手动 `Package RC` 工作流，用于生成可追踪的 Windows RC 构建产物。正式发布包不要求客户预装 Python 或 Google Chrome。
