@@ -2,9 +2,10 @@
 """Compatibility export for the productized Qt desktop client."""
 from __future__ import annotations
 
-from .qt_workspace import ProductRecruitmentWorkbenchWindow
+from .qt_workspace_runtime import RecruitmentWorkspaceWindow
 
-RecruitmentWorkbenchWindow = ProductRecruitmentWorkbenchWindow
-WorkbenchApp = ProductRecruitmentWorkbenchWindow
+RecruitmentWorkbenchWindow = RecruitmentWorkspaceWindow
+WorkbenchApp = RecruitmentWorkspaceWindow
+ProductRecruitmentWorkbenchWindow = RecruitmentWorkspaceWindow
 
 __all__ = ["WorkbenchApp", "RecruitmentWorkbenchWindow", "ProductRecruitmentWorkbenchWindow"]
