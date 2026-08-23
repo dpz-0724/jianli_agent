@@ -61,6 +61,27 @@ class DeliveryDatabaseTests(unittest.TestCase):
         self.assertEqual(row["title"], "高级Java工程师")
         self.assertIn("platform_uid", {item["kind"] for item in identities})
 
+    def test_no_uid_profile_change_remains_visible_duplicate_for_human_review(self):
+        first = {
+            "platform": "zhilian",
+            "name": "王芳",
+            "title": "Java工程师",
+            "location": "南京",
+            "education": "本科",
+            "experience": "5年",
+            "text": "Java MySQL",
+        }
+        first_id, first_created, _ = self.db.upsert_candidate(first)
+        second = {
+            **first,
+            "title": "高级Java工程师",
+            "text": "Java Spring Boot Redis",
+        }
+        second_id, second_created, _ = self.db.upsert_candidate(second)
+        self.assertTrue(first_created)
+        self.assertTrue(second_created)
+        self.assertNotEqual(first_id, second_id)
+
     def test_audit_actor_is_attributed_and_stale_assessment_returns_to_review(self):
         from workbench.models import ProfileStatus
         from workbench.service import RecruitmentService
