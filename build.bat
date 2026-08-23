@@ -18,6 +18,10 @@ if errorlevel 1 (
 if errorlevel 1 goto :failed
 %PY% -m unittest discover -s tests -v
 if errorlevel 1 goto :failed
+set QT_QPA_PLATFORM=offscreen
+set PYTHONUTF8=1
+%PY% -m unittest discover -s tests_qt -p "test_*.py" -v
+if errorlevel 1 goto :failed
 
 rem 将受控 Chromium 放入发布目录，客户不需要预装 Google Chrome。
 set PLAYWRIGHT_BROWSERS_PATH=%CD%\runtime-browsers
@@ -40,6 +44,9 @@ echo [打包] 生成可独立分发的 onedir 目录...
     --hidden-import workbench.qt_workspace ^
     --hidden-import workbench.qt_workspace_runtime ^
     --hidden-import workbench.qt_job_dialog ^
+    --hidden-import workbench.delivery_browser ^
+    --hidden-import workbench.db_delivery ^
+    --hidden-import workbench.product_profile ^
     --hidden-import workbench.browser_worker ^
     app.py
 if errorlevel 1 goto :failed
