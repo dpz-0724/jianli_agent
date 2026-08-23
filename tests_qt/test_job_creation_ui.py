@@ -20,7 +20,8 @@ class JobCreationQtTests(unittest.TestCase):
     def test_dialog_explains_missing_title_and_enables_create(self):
         dialog = JobCreateDialog()
         self.assertFalse(dialog.create_button.isEnabled())
-        self.assertTrue(dialog.validation_label.isVisible())
+        self.assertEqual(dialog.validation_label.text(), "请先填写岗位名称")
+        self.assertFalse(dialog.validation_label.isHidden())
         dialog.title_edit.setText("高级 Java 工程师")
         self.assertTrue(dialog.create_button.isEnabled())
         dialog._validate_and_accept()
