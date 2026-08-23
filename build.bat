@@ -2,7 +2,7 @@
 setlocal
 chcp 65001 >nul
 cd /d "%~dp0"
-title 构建招聘自动化工作台 V0.9
+title 构建招聘自动化工作台 V0.9.1 Pilot
 
 set PY=python
 if exist ".venv\Scripts\python.exe" set PY=.venv\Scripts\python.exe
@@ -52,13 +52,14 @@ echo [打包] 生成可独立分发的 onedir 目录...
     app.py
 if errorlevel 1 goto :failed
 
-if exist "dist\招聘自动化工作台-v0.9.zip" del /q "dist\招聘自动化工作台-v0.9.zip"
-powershell -NoProfile -Command "Compress-Archive -Path 'dist\招聘自动化工作台\*' -DestinationPath 'dist\招聘自动化工作台-v0.9.zip' -Force"
+set ZIP=dist\招聘自动化工作台-v0.9.1-Pilot.zip
+if exist "%ZIP%" del /q "%ZIP%"
+powershell -NoProfile -Command "Compress-Archive -Path 'dist\招聘自动化工作台\*' -DestinationPath '%ZIP%' -Force"
 
 echo.
 echo 构建完成：
 echo   dist\招聘自动化工作台\招聘自动化工作台.exe
-echo   dist\招聘自动化工作台-v0.9.zip
+echo   %ZIP%
 exit /b 0
 
 :failed
