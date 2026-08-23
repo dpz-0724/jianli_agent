@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import getpass
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 
@@ -64,6 +65,25 @@ class ProductRepositoryMixin:
 
     def export_job_csv(self, job_id: int, path, actor: str = "") -> int:
         return super().export_job_csv(job_id, path, actor=_actor(actor))
+
+    def merge_candidates(self, primary_id: int, duplicate_id: int, actor: str = "") -> None:
+        """Create a recoverable database backup before an irreversible identity merge."""
+        backup_dir = Path(self.path).parent / "backups"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        backup_path = backup_dir / f"before-candidate-merge-{primary_id}-{duplicate_id}-{stamp}.db"
+        self.backup_to(backup_path)
+        resolved_actor = _actor(actor)
+        super().merge_candidates(primary_id, duplicate_id, actor=resolved_actor)
+        with self.connect(write=True) as conn:
+            self._audit_conn(
+                conn,
+                "CANDIDATE_MERGE_BACKUP_CREATED",
+                "candidate",
+                str(primary_id),
+                {"duplicate_candidate_id": duplicate_id, "backup_path": str(backup_path)},
+                resolved_actor,
+            )
 
     @staticmethod
     def _mark_stale(item: dict[str, Any]) -> dict[str, Any]:
