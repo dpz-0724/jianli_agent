@@ -9,12 +9,21 @@ from .db_base import DatabaseBase
 from .db_candidates import CandidateMixin
 from .db_delivery import DeliveryDatabaseMixin
 from .db_jobs import JobRunMixin
+from .db_page import SourcingPageMixin
 from .db_product import ProductRepositoryMixin
 from .db_reporting import ReportingMixin
 from .db_schema import default_data_dir
 
 
-class WorkbenchDB(ProductRepositoryMixin, DeliveryDatabaseMixin, JobRunMixin, CandidateMixin, ReportingMixin, DatabaseBase):
+class WorkbenchDB(
+    ProductRepositoryMixin,
+    SourcingPageMixin,
+    DeliveryDatabaseMixin,
+    JobRunMixin,
+    CandidateMixin,
+    ReportingMixin,
+    DatabaseBase,
+):
     """Serialized, job-scoped repository with durable delivery operations."""
 
     def __init__(self, path=None):
