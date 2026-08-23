@@ -3,6 +3,11 @@
 ## V0.9 Productization Alpha
 
 - 主界面由 Tkinter 工程界面迁移到 PySide6 现代桌面工作台
+- 登录、岗位标准、开始招聘和自动化控制收拢到同一主工作台
+- 返回应用时自动检查已保存的智联登录状态
+- 修复“创建岗位点击无反应”：按钮始终可响应，错误可见并写入日志
+- 新增结构化岗位创建：学历、经验、地点、必须能力、加分能力和完整 JD
+- 新增候选人去重历史：首次入池、本岗位已更新、跨岗位已见
 - 新增岗位画像草稿 / 明确确认门禁与版本记录
 - 新增搜索页数、人数上限和浏览器运行时配置
 - 默认支持工作台 Chromium，Edge / Chrome 作为备用
@@ -14,7 +19,7 @@
 - 新增 V1 数据库增量迁移
 - Playwright 与 PySide6 使用固定版本
 - 构建改为携带 Chromium 的 PyInstaller onedir 发布包
-- 扩展 Windows / Linux、Python 3.10 / 3.12 测试与桌面导入检查
+- 扩展 Windows / Linux、Python 3.10 / 3.12 测试与桌面交互检查
 
 ## V0.8 Engineering Baseline
 
