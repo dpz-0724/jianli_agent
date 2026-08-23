@@ -9,17 +9,15 @@ from .db_base import DatabaseBase
 from .db_candidates import CandidateMixin
 from .db_delivery import DeliveryDatabaseMixin
 from .db_jobs import JobRunMixin
+from .db_product import ProductRepositoryMixin
 from .db_reporting import ReportingMixin
 from .db_schema import default_data_dir
 
 
-class WorkbenchDB(DeliveryDatabaseMixin, JobRunMixin, CandidateMixin, ReportingMixin, DatabaseBase):
+class WorkbenchDB(ProductRepositoryMixin, DeliveryDatabaseMixin, JobRunMixin, CandidateMixin, ReportingMixin, DatabaseBase):
     """Serialized, job-scoped repository with durable delivery operations."""
 
     def __init__(self, path=None):
-        # SQLite ':memory:' creates a different database for every short-lived connection.
-        # Map it to a temporary file so repository methods still share one database in UI
-        # smoke tests and embedded evaluation environments.
         self._temporary_directory = None
         if str(path) == ":memory:":
             self._temporary_directory = tempfile.TemporaryDirectory()
