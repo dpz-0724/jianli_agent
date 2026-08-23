@@ -23,19 +23,51 @@ def configure_logging() -> None:
     )
 
 
+def install_qt_exception_hook() -> None:
+    """Make exceptions raised from Qt signal handlers visible instead of silent.
+
+    Windowed PyInstaller applications do not have a console. Without an exception hook,
+    a failed button handler can look exactly like “the button did nothing”.
+    """
+
+    def handle_exception(exc_type, exc_value, exc_traceback) -> None:
+        if issubclass(exc_type, KeyboardInterrupt):
+            sys.__excepthook__(exc_type, exc_value, exc_traceback)
+            return
+        logging.getLogger("workbench.ui").error(
+            "界面操作失败",
+            exc_info=(exc_type, exc_value, exc_traceback),
+        )
+        try:
+            from PySide6.QtWidgets import QMessageBox
+
+            QMessageBox.critical(
+                None,
+                "操作未完成",
+                "本次操作未完成，错误已经写入本地日志。\n\n"
+                f"{exc_value}\n\n"
+                f"日志：{default_data_dir() / 'logs' / 'workbench.log'}",
+            )
+        except Exception:
+            pass
+
+    sys.excepthook = handle_exception
+
+
 def main() -> int:
     configure_logging()
     configure_packaged_browser_path()
     os.environ.setdefault("QT_ENABLE_HIGHDPI_SCALING", "1")
     try:
         from PySide6.QtWidgets import QApplication, QMessageBox
-        from workbench.qt_ui import RecruitmentWorkbenchWindow
+        from workbench.qt_workspace import ProductRecruitmentWorkbenchWindow
 
         application = QApplication.instance() or QApplication(sys.argv)
         application.setApplicationName("招聘自动化工作台")
         application.setOrganizationName("RecruitmentWorkbench")
         application.setStyle("Fusion")
-        window = RecruitmentWorkbenchWindow()
+        install_qt_exception_hook()
+        window = ProductRecruitmentWorkbenchWindow()
         window.show()
         return int(application.exec())
     except Exception as error:
