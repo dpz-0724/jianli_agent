@@ -19,8 +19,6 @@ class RecruitmentWorkspaceWindow(_BaseWorkspace):
     def __init__(self, db_path: str | None = None):
         super().__init__(db_path)
 
-        # Replace the engineering worker before the startup timers fire. The event queue
-        # is preserved, so all existing UI event handling remains compatible.
         previous_worker = self.worker
         self.worker = DeliveryBrowserWorker(self.browser_events, browser_config=self._browser_config())
         previous_worker.shutdown()
@@ -44,7 +42,7 @@ class RecruitmentWorkspaceWindow(_BaseWorkspace):
 
         self.candidate_table.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.merge_candidates_button = QPushButton("合并所选重复候选人")
-        self.merge_candidates_button.setToolTip("选择两行候选人；当前行作为保留主记录")
+        self.merge_candidates_button.setToolTip("选择两行候选人；当前行作为保留主记录，合并前会自动备份数据库")
         self.merge_candidates_button.clicked.connect(self.merge_selected_candidates)
         candidate_page = self.stack.widget(1)
         if candidate_page is not None and candidate_page.layout() is not None:
@@ -79,6 +77,14 @@ class RecruitmentWorkspaceWindow(_BaseWorkspace):
             preferred_skills=values.get("preferred_skills"),
         )
 
+    def _ack_page(self, payload: dict, ok: bool, error: str = "") -> None:
+        token = str(payload.get("ack_token") or "")
+        if token:
+            self.worker.submit(
+                "ACK_PAGE",
+                {"ack_token": token, "ok": bool(ok), "error": error},
+            )
+
     def _handle_browser_event(self, event: BrowserEvent) -> None:
         payload = event.payload
         context = self.pending.get(event.request_id, {})
@@ -86,12 +92,15 @@ class RecruitmentWorkspaceWindow(_BaseWorkspace):
 
         if event.event == "PAGE_RESULT":
             if not run_id or not context:
+                self._ack_page(payload, False, "找不到对应的招聘任务上下文")
                 return
             page_no = int(payload.get("page_no") or 0)
             run = self.db.get_sourcing_run(run_id)
             if not run:
+                self._ack_page(payload, False, "招聘任务不存在")
                 return
             if page_no <= int(run.get("last_page") or 0):
+                self._ack_page(payload, True)
                 return
             try:
                 summary = self.service.ingest_candidates(
@@ -117,20 +126,22 @@ class RecruitmentWorkspaceWindow(_BaseWorkspace):
                 )
             except Exception as error:
                 context["persist_failed"] = True
-                self.worker.submit("CANCEL")
                 self.db.update_sourcing_run(
                     run_id,
                     status=RunStatus.FAILED,
                     error_code="PAGE_PERSIST_FAILED",
                     error_message=str(error),
                 )
+                self._ack_page(payload, False, str(error))
                 QMessageBox.critical(
                     self,
                     "候选人保存失败",
-                    "本页候选人未能安全保存，任务正在停止。可修复后从最近已提交页恢复。\n\n"
+                    "本页候选人未能安全保存。系统不会进入下一页，可修复后从最近已提交页恢复。\n\n"
                     f"{error}",
                 )
                 return
+
+            self._ack_page(payload, True)
             self.task_status.setText(
                 f"第 {page_no} 页已安全保存：累计发现 {found_total} 人，新入池 {new_total} 人"
             )
@@ -203,7 +214,7 @@ class RecruitmentWorkspaceWindow(_BaseWorkspace):
             "确认合并候选人",
             f"保留：{primary.get('name') or '未命名'} · {primary.get('title') or ''}\n"
             f"合并：{duplicate.get('name') or '未命名'} · {duplicate.get('title') or ''}\n\n"
-            "岗位关联、快照、评估和跟进记录将归并到保留记录。是否继续？",
+            "岗位关联、快照、评估和跟进记录将归并到保留记录。系统会先自动备份数据库。是否继续？",
         )
         if answer != QMessageBox.Yes:
             return
@@ -214,7 +225,7 @@ class RecruitmentWorkspaceWindow(_BaseWorkspace):
             return
         self.refresh_jobs(self.current_job_id)
         self.refresh_candidates()
-        QMessageBox.information(self, "合并完成", "重复候选人已合并，操作已写入审计记录。")
+        QMessageBox.information(self, "合并完成", "重复候选人已合并；合并前备份和审计记录已保存。")
 
 
 __all__ = ["RecruitmentWorkspaceWindow"]
