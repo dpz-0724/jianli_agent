@@ -46,6 +46,7 @@ echo [打包] 生成可独立分发的 onedir 目录...
     --hidden-import workbench.qt_job_dialog ^
     --hidden-import workbench.delivery_browser ^
     --hidden-import workbench.db_delivery ^
+    --hidden-import workbench.db_product ^
     --hidden-import workbench.product_profile ^
     --hidden-import workbench.browser_worker ^
     app.py
