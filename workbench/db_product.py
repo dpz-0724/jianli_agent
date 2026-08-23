@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Single-user product repository policies: actor attribution and stale-assessment safety."""
+"""Single-user product repository policies: identity safety, attribution and stale assessments."""
 from __future__ import annotations
 
 import getpass
@@ -34,6 +34,55 @@ class ProductRepositoryMixin:
         return super()._audit_conn(
             conn, event_type, entity_type, entity_id, payload, _actor(actor)
         )
+
+    def _lookup_candidate_conn(self, conn, identities, canonical_key: str) -> tuple[int | None, str]:
+        """Prefer exact aliases; only use fuzzy migration when a new platform UID exists.
+
+        A no-UID candidate whose text or title changes is safer as a visible duplicate
+        than as a silent false merge. The stable signature is therefore used only to bind
+        a newly discovered platform UID to one unique legacy candidate that previously
+        lacked an exact identity.
+        """
+        exact_kinds = {"platform_uid", "source_url", "fingerprint"}
+        for kind, key, _confidence in identities:
+            if kind not in exact_kinds:
+                continue
+            row = conn.execute(
+                """
+                SELECT ci.candidate_id FROM candidate_identities ci
+                JOIN candidates c ON c.id=ci.candidate_id
+                WHERE ci.kind=? AND ci.identity_key=? AND c.merged_into_candidate_id IS NULL
+                LIMIT 1
+                """,
+                (kind, key),
+            ).fetchone()
+            if row:
+                return int(row["candidate_id"]), kind
+
+        row = conn.execute(
+            "SELECT id FROM candidates WHERE canonical_key=? AND merged_into_candidate_id IS NULL",
+            (canonical_key,),
+        ).fetchone()
+        if row:
+            return int(row["id"]), "legacy_canonical_key"
+
+        incoming_has_uid = any(kind == "platform_uid" for kind, _key, _confidence in identities)
+        stable_keys = [key for kind, key, _confidence in identities if kind == "stable_signature"]
+        if incoming_has_uid and stable_keys:
+            rows = conn.execute(
+                """
+                SELECT DISTINCT ci.candidate_id FROM candidate_identities ci
+                JOIN candidates c ON c.id=ci.candidate_id
+                WHERE ci.kind='stable_signature' AND ci.identity_key=?
+                  AND c.merged_into_candidate_id IS NULL
+                  AND COALESCE(c.platform_uid,'')=''
+                LIMIT 2
+                """,
+                (stable_keys[0],),
+            ).fetchall()
+            if len(rows) == 1:
+                return int(rows[0]["candidate_id"]), "stable_signature_uid_migration"
+        return None, ""
 
     def confirm_job_profile(self, job_id: int, confirmed_by: str = "") -> int:
         return super().confirm_job_profile(job_id, confirmed_by=_actor(confirmed_by))
