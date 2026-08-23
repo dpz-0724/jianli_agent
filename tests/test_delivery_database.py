@@ -61,6 +61,45 @@ class DeliveryDatabaseTests(unittest.TestCase):
         self.assertEqual(row["title"], "高级Java工程师")
         self.assertIn("platform_uid", {item["kind"] for item in identities})
 
+    def test_audit_actor_is_attributed_and_stale_assessment_returns_to_review(self):
+        from workbench.models import ProfileStatus
+        from workbench.service import RecruitmentService
+
+        job = self.db.create_job("Java工程师", "Java", "")
+        profile = build_recruiter_confirmed_profile(
+            keyword="Java", jd="熟悉Java。", required_skills="Java"
+        )
+        self.db.update_job(job, profile=profile, profile_status=ProfileStatus.DRAFT)
+        self.db.confirm_job_profile(job)
+        service = RecruitmentService(self.db)
+        service.ingest_candidates(
+            job_id=job,
+            run_id=None,
+            candidates=[
+                {
+                    "platform": "demo",
+                    "platform_uid": "stale-1",
+                    "name": "候选人",
+                    "title": "Java工程师",
+                    "skills": "Java",
+                    "text": "Java",
+                }
+            ],
+        )
+        with self.db.connect(write=True) as conn:
+            conn.execute(
+                "UPDATE candidates SET last_seen_at='9999-12-31T23:59:59+00:00' WHERE platform_uid='stale-1'"
+            )
+        row = self.db.list_job_candidates(job)[0]
+        self.assertTrue(row["assessment_stale"])
+        self.assertEqual(row["assessment_status"], "REVIEW")
+        self.assertTrue(any("资料在本次评估后更新" in reason for reason in row["reasons"]))
+        with self.db.connect() as conn:
+            actor = conn.execute(
+                "SELECT actor FROM audit_events WHERE event_type='JOB_CREATED' ORDER BY id DESC LIMIT 1"
+            ).fetchone()[0]
+        self.assertTrue(actor)
+
     def test_manual_merge_preserves_job_links_and_marks_duplicate(self):
         job = self.db.create_job("Java工程师")
         first_id, _, _ = self.db.upsert_candidate(
