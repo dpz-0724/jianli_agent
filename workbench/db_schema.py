@@ -7,7 +7,7 @@ import sqlite3
 from datetime import datetime
 from pathlib import Path
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 def now_iso() -> str:
@@ -44,9 +44,23 @@ CREATE TABLE IF NOT EXISTS candidates (
  title TEXT NOT NULL DEFAULT '', location TEXT NOT NULL DEFAULT '', education TEXT NOT NULL DEFAULT '',
  experience TEXT NOT NULL DEFAULT '', activity TEXT NOT NULL DEFAULT '', skills TEXT NOT NULL DEFAULT '',
  text TEXT NOT NULL DEFAULT '', source_url TEXT NOT NULL DEFAULT '',
- first_seen_at TEXT NOT NULL, last_seen_at TEXT NOT NULL
+ first_seen_at TEXT NOT NULL, last_seen_at TEXT NOT NULL,
+ merged_into_candidate_id INTEGER REFERENCES candidates(id) ON DELETE SET NULL
 );
 CREATE INDEX IF NOT EXISTS idx_candidates_uid ON candidates(platform,platform_uid);
+CREATE INDEX IF NOT EXISTS idx_candidates_merge ON candidates(merged_into_candidate_id);
+CREATE TABLE IF NOT EXISTS candidate_identities (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ candidate_id INTEGER NOT NULL REFERENCES candidates(id) ON DELETE CASCADE,
+ kind TEXT NOT NULL, identity_key TEXT NOT NULL, confidence INTEGER NOT NULL DEFAULT 0,
+ created_at TEXT NOT NULL,
+ UNIQUE(candidate_id,kind,identity_key)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_candidate_identity_exact
+ ON candidate_identities(kind,identity_key)
+ WHERE kind IN ('platform_uid','source_url','fingerprint');
+CREATE INDEX IF NOT EXISTS idx_candidate_identity_lookup
+ ON candidate_identities(kind,identity_key,candidate_id);
 CREATE TABLE IF NOT EXISTS candidate_snapshots (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  candidate_id INTEGER NOT NULL REFERENCES candidates(id) ON DELETE CASCADE,
@@ -124,5 +138,29 @@ def migrate_schema(conn: sqlite3.Connection) -> None:
     for name, definition in run_columns.items():
         if name not in runs:
             conn.execute(f"ALTER TABLE sourcing_runs ADD COLUMN {name} {definition}")
+
+    candidates = _columns(conn, "candidates")
+    if "merged_into_candidate_id" not in candidates:
+        conn.execute(
+            "ALTER TABLE candidates ADD COLUMN merged_into_candidate_id INTEGER REFERENCES candidates(id) ON DELETE SET NULL"
+        )
+
+    conn.executescript(
+        """
+        CREATE INDEX IF NOT EXISTS idx_candidates_merge ON candidates(merged_into_candidate_id);
+        CREATE TABLE IF NOT EXISTS candidate_identities (
+         id INTEGER PRIMARY KEY AUTOINCREMENT,
+         candidate_id INTEGER NOT NULL REFERENCES candidates(id) ON DELETE CASCADE,
+         kind TEXT NOT NULL, identity_key TEXT NOT NULL, confidence INTEGER NOT NULL DEFAULT 0,
+         created_at TEXT NOT NULL,
+         UNIQUE(candidate_id,kind,identity_key)
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_candidate_identity_exact
+         ON candidate_identities(kind,identity_key)
+         WHERE kind IN ('platform_uid','source_url','fingerprint');
+        CREATE INDEX IF NOT EXISTS idx_candidate_identity_lookup
+         ON candidate_identities(kind,identity_key,candidate_id);
+        """
+    )
 
     conn.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
