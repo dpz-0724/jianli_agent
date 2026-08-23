@@ -30,13 +30,13 @@ jobs:
         run: |
           $exe = "dist/招聘自动化工作台/招聘自动化工作台.exe"
           if (-not (Test-Path $exe)) { throw "Packaged executable is missing" }
-          $zip = "dist/招聘自动化工作台-v0.9.zip"
+          $zip = "dist/招聘自动化工作台-v0.9.1-Pilot.zip"
           if (-not (Test-Path $zip)) { throw "Release ZIP is missing" }
       - uses: actions/upload-artifact@v4
         with:
-          name: RecruitmentWorkbench-v0.9-rc-windows
+          name: RecruitmentWorkbench-v0.9.1-pilot-windows
           path: |
             dist/招聘自动化工作台/**
-            dist/招聘自动化工作台-v0.9.zip
+            dist/招聘自动化工作台-v0.9.1-Pilot.zip
           if-no-files-found: error
           retention-days: 14
