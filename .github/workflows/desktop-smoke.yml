@@ -14,6 +14,7 @@ jobs:
     runs-on: windows-latest
     env:
       QT_QPA_PLATFORM: offscreen
+      PYTHONUTF8: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -27,6 +28,6 @@ jobs:
           python -c "from PySide6.QtWidgets import QApplication;
           from workbench.qt_workspace import ProductRecruitmentWorkbenchWindow;
           app=QApplication([]); window=ProductRecruitmentWorkbenchWindow();
-          print(window.windowTitle()); window.close()"
+          assert window.windowTitle(); window.close(); print('WINDOW_OK')"
       - name: Verify create-job interaction and persistence
         run: python -m unittest discover -s tests_qt -p "test_*.py" -v
