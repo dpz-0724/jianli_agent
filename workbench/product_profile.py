@@ -23,7 +23,15 @@ def _split_terms(value: str | Iterable[str] | None) -> list[str]:
         parts = re.split(r"[\s,，、;；/|]+", value)
     else:
         parts = [str(item) for item in value]
-    return list(dict.fromkeys(part.strip().lower() for part in parts if part and part.strip()))
+    result: list[str] = []
+    seen: set[str] = set()
+    for part in parts:
+        term = part.strip()
+        key = term.lower()
+        if term and key not in seen:
+            seen.add(key)
+            result.append(term)
+    return result
 
 
 def build_recruiter_confirmed_profile(
@@ -59,7 +67,8 @@ def build_recruiter_confirmed_profile(
     explicit_preferred = _split_terms(preferred_skills)
     required = tuple(explicit_required or parsed.required_skills)
     preferred_source = explicit_preferred or list(parsed.preferred_skills)
-    preferred = tuple(skill for skill in preferred_source if skill not in required)
+    required_keys = {skill.lower() for skill in required}
+    preferred = tuple(skill for skill in preferred_source if skill.lower() not in required_keys)
 
     search_terms = tuple(_split_terms(keyword)[:12])
     evidence = dict(parsed.source_evidence)
