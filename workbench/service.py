@@ -97,22 +97,43 @@ class RecruitmentService:
         run_id: int | None,
         candidates: Iterable[dict[str, Any]],
     ) -> IngestSummary:
+        """Persist one page/batch atomically and return job-scoped counts.
+
+        The browser worker streams pages. A page is considered checkpointed only after
+        this method commits candidate identities, snapshots, job links and assessments.
+        """
         profile = self.load_profile(job_id)
-        found = new_candidates = new_job_links = 0
+        entries: list[tuple[dict[str, Any], Any]] = []
         counts = {
             AssessmentStatus.PASS: 0,
             AssessmentStatus.REVIEW: 0,
             AssessmentStatus.CONFLICT: 0,
         }
         for candidate in candidates:
-            found += 1
-            candidate_id, created, _ = self.db.upsert_candidate(candidate, run_id=run_id)
-            job_candidate_id, linked = self.db.link_candidate_to_job(job_id, candidate_id)
             assessment = assess_candidate(candidate, profile)
-            self.db.save_assessment(job_candidate_id, assessment, profile)
-            new_candidates += int(created)
-            new_job_links += int(linked)
+            entries.append((candidate, assessment))
             counts[assessment.status] += 1
+
+        if hasattr(self.db, "persist_candidate_assessment_batch"):
+            persisted = self.db.persist_candidate_assessment_batch(
+                job_id=job_id,
+                run_id=run_id,
+                entries=entries,
+                profile=profile,
+            )
+            found = int(persisted["found"])
+            new_candidates = int(persisted["new_candidates"])
+            new_job_links = int(persisted["new_job_links"])
+        else:  # pragma: no cover - compatibility fallback
+            found = new_candidates = new_job_links = 0
+            for candidate, assessment in entries:
+                found += 1
+                candidate_id, created, _ = self.db.upsert_candidate(candidate, run_id=run_id)
+                job_candidate_id, linked = self.db.link_candidate_to_job(job_id, candidate_id)
+                self.db.save_assessment(job_candidate_id, assessment, profile)
+                new_candidates += int(created)
+                new_job_links += int(linked)
+
         return IngestSummary(
             found=found,
             new_candidates=new_candidates,
