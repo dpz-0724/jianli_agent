@@ -41,6 +41,9 @@ job_sales = db.create_job("销售经理", "销售")
 svc.parse_and_save_job(
     job_sales, title="销售经理", keyword="销售",
     jd="大客户销售，负责华北区域", locations=["北京"])
+# V0.9 规则：岗位画像必须确认后才能搜索
+db.confirm_job_profile(job_java, confirmed_by="live-test")
+db.confirm_job_profile(job_sales, confirmed_by="live-test")
 print("岗位已建: Java=%s 销售=%s" % (job_java, job_sales))
 
 # ---------- D：BrowserWorker 真实搜索 ----------

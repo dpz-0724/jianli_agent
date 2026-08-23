@@ -40,12 +40,16 @@ class DatabaseBase:
     def _initialize(self) -> None:
         # sqlite3.Connection's context manager commits/rolls back but does not close.
         # Explicit close is required on Windows so temporary/test databases can be deleted.
+        from .db_schema import migrate_schema
+
         conn = sqlite3.connect(self.path, timeout=30)
         try:
             conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("PRAGMA synchronous=NORMAL")
             conn.execute("PRAGMA foreign_keys=ON")
             conn.executescript(SCHEMA)
+            # 旧版本数据库升级：补齐新增列（profile_status 等），否则查询直接崩溃。
+            migrate_schema(conn)
             conn.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
             conn.commit()
         finally:

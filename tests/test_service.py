@@ -24,6 +24,8 @@ class ServiceTests(unittest.TestCase):
             keyword="Java",
             jd="本科及以上，至少3年经验，熟悉Java。",
         )
+        # V0.9 产品规则：岗位画像必须确认后才有搜索
+        self.db.confirm_job_profile(job, confirmed_by="unit-test")
         run = self.db.create_sourcing_run(job, "Java")
         summary = self.service.ingest_candidates(
             job_id=job,
