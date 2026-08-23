@@ -26,6 +26,11 @@ class WorkbenchDB(DeliveryDatabaseMixin, JobRunMixin, CandidateMixin, ReportingM
             path = Path(self._temporary_directory.name) / "workbench.db"
         super().__init__(path)
 
+    def restore_from(self, path):
+        pre_restore = super().restore_from(path)
+        self._backfill_candidate_identities()
+        return pre_restore
+
     def __del__(self):
         temporary = getattr(self, "_temporary_directory", None)
         if temporary is not None:
