@@ -2,6 +2,8 @@
 """Durable page streaming and self-healing browser controls for pilot delivery."""
 from __future__ import annotations
 
+import threading
+import time
 import uuid
 from typing import Any, Callable
 
@@ -11,6 +13,10 @@ from .database import default_data_dir
 from .diagnostics import capture_failure
 from .models import BrowserCommand
 from .zhilian_browser import ProductCandidateSearcher, SearchCancelled
+
+
+class PagePersistenceError(RuntimeError):
+    pass
 
 
 class DeliveryCandidateSearcher(ProductCandidateSearcher):
@@ -120,16 +126,58 @@ class DeliveryCandidateSearcher(ProductCandidateSearcher):
 
 
 class DeliveryBrowserWorker(BrowserWorker):
-    """Streams each page to the UI before advancing the durable checkpoint."""
+    """Streams each page and waits until its durable database commit is acknowledged."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._ack_lock = threading.Lock()
+        self._page_ack_events: dict[str, threading.Event] = {}
+        self._page_ack_results: dict[str, tuple[bool, str]] = {}
 
     def submit(self, command: str, payload: dict[str, Any] | None = None, request_id: str | None = None) -> str:
         name = command.upper().strip()
+        rid = request_id or uuid.uuid4().hex
+        if name == "ACK_PAGE":
+            data = payload or {}
+            token = str(data.get("ack_token") or "")
+            with self._ack_lock:
+                event = self._page_ack_events.get(token)
+                if event is not None:
+                    self._page_ack_results[token] = (
+                        bool(data.get("ok")),
+                        str(data.get("error") or ""),
+                    )
+                    event.set()
+            return rid
         if name == "BRING_TO_FRONT" and self._active_request_id:
-            rid = request_id or uuid.uuid4().hex
             self._bring_front_requested.set()
             self._emit("CONTROL_ACCEPTED", rid, action="BRING_TO_FRONT", message="正在显示受控浏览器")
             return rid
-        return super().submit(name, payload, request_id)
+        return super().submit(name, payload, rid)
+
+    def _register_page_ack(self) -> tuple[str, threading.Event]:
+        token = uuid.uuid4().hex
+        event = threading.Event()
+        with self._ack_lock:
+            self._page_ack_events[token] = event
+        return token, event
+
+    def _await_page_ack(self, token: str, event: threading.Event, timeout: float = 180.0) -> None:
+        deadline = time.monotonic() + timeout
+        try:
+            while not event.wait(0.15):
+                if self._cancel_requested.is_set() or self._shutdown.is_set():
+                    raise SearchCancelled("任务在等待候选人安全保存时被停止")
+                if time.monotonic() >= deadline:
+                    raise PagePersistenceError("PAGE_PERSIST_TIMEOUT: 等待候选人保存确认超时")
+            with self._ack_lock:
+                ok, error = self._page_ack_results.get(token, (False, "未收到保存结果"))
+            if not ok:
+                raise PagePersistenceError(f"PAGE_PERSIST_FAILED: {error or '候选人保存失败'}")
+        finally:
+            with self._ack_lock:
+                self._page_ack_events.pop(token, None)
+                self._page_ack_results.pop(token, None)
 
     def _ensure_bot(self) -> DeliveryCandidateSearcher:
         if self._bot is not None and not self._bot.is_alive():
@@ -188,6 +236,7 @@ class DeliveryBrowserWorker(BrowserWorker):
                 )
 
             def on_page_result(page_no: int, candidates: list[dict[str, Any]], total_count: int) -> None:
+                ack_token, ack_event = self._register_page_ack()
                 self._emit(
                     "PAGE_RESULT",
                     command.request_id,
@@ -196,8 +245,10 @@ class DeliveryBrowserWorker(BrowserWorker):
                     candidates=candidates,
                     page_count=len(candidates),
                     segment_count=total_count,
+                    ack_token=ack_token,
                     message=f"第 {page_no} 页已采集，正在持久化 {len(candidates)} 名候选人",
                 )
+                self._await_page_ack(ack_token, ack_event)
 
             count = bot.search_and_scrape_controlled(
                 query,
@@ -224,7 +275,14 @@ class DeliveryBrowserWorker(BrowserWorker):
                 self._stop_trace(bot)
             self._emit("CANCELLED", command.request_id, run_id=run_id, error=str(error), message="任务已安全停止")
         except Exception as error:
-            error_code = self._classify_error(error)
+            text = str(error)
+            error_code = (
+                "PAGE_PERSIST_FAILED"
+                if "PAGE_PERSIST_FAILED" in text
+                else "PAGE_PERSIST_TIMEOUT"
+                if "PAGE_PERSIST_TIMEOUT" in text
+                else self._classify_error(error)
+            )
             diagnostic_dir = capture_failure(
                 run_id=run_id,
                 request_id=command.request_id,
@@ -250,6 +308,11 @@ class DeliveryBrowserWorker(BrowserWorker):
             self._pause_requested.clear()
             self._cancel_requested.clear()
             self._takeover_requested.clear()
+            with self._ack_lock:
+                for event in self._page_ack_events.values():
+                    event.set()
+                self._page_ack_events.clear()
+                self._page_ack_results.clear()
 
     def _handle_simple(self, command: BrowserCommand) -> None:
         if command.command == "CONFIGURE_BROWSER":
@@ -305,4 +368,4 @@ class DeliveryBrowserWorker(BrowserWorker):
             raise last_error
 
 
-__all__ = ["DeliveryBrowserWorker", "DeliveryCandidateSearcher"]
+__all__ = ["DeliveryBrowserWorker", "DeliveryCandidateSearcher", "PagePersistenceError"]
