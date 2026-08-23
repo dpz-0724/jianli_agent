@@ -17,7 +17,7 @@ class IncrementalDeliveryQtTests(unittest.TestCase):
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
 
-    def test_page_is_persisted_before_completed_checkpoint(self):
+    def test_page_is_persisted_and_acknowledged_before_completed_checkpoint(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             window = RecruitmentWorkspaceWindow(str(Path(temp_dir) / "checkpoint.db"))
             window._update_login_ui(True, "test")
@@ -48,6 +48,7 @@ class IncrementalDeliveryQtTests(unittest.TestCase):
                 "start_page": 1,
             }
             window.active_run_id = run_id
+            ack_token, ack_event = window.worker._register_page_ack()
 
             window._handle_browser_event(
                 BrowserEvent(
@@ -56,6 +57,7 @@ class IncrementalDeliveryQtTests(unittest.TestCase):
                     payload={
                         "run_id": run_id,
                         "page_no": 1,
+                        "ack_token": ack_token,
                         "candidates": [
                             {
                                 "platform": "zhilian",
@@ -71,6 +73,7 @@ class IncrementalDeliveryQtTests(unittest.TestCase):
                     },
                 )
             )
+            window.worker._await_page_ack(ack_token, ack_event, timeout=0.2)
             run = window.db.get_sourcing_run(run_id)
             self.assertEqual(run["last_page"], 1)
             self.assertEqual(run["found_count"], 1)
