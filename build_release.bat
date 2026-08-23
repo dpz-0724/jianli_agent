@@ -2,7 +2,7 @@
 setlocal
 chcp 65001 >nul
 cd /d "%~dp0"
-title 发布招聘自动化工作台 V0.9
+title 发布招聘自动化工作台 V0.9.1 Pilot
 
 call build.bat
 if errorlevel 1 exit /b 1
@@ -25,6 +25,6 @@ if errorlevel 1 (
 
 echo.
 echo 发布产物：
-echo   dist\招聘自动化工作台-v0.9.zip
-echo   dist\installer\招聘自动化工作台-v0.9-Setup.exe
+echo   dist\招聘自动化工作台-v0.9.1-Pilot.zip
+echo   dist\installer\招聘自动化工作台-v0.9.1-Pilot-Setup.exe
 exit /b 0
