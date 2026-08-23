@@ -1,5 +1,5 @@
 #define MyAppName "招聘自动化工作台"
-#define MyAppVersion "0.9.0-alpha"
+#define MyAppVersion "0.9.1"
 #define MyAppPublisher "Recruitment Workbench"
 #define MyAppExeName "招聘自动化工作台.exe"
 
@@ -13,7 +13,7 @@ DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 OutputDir=..\dist\installer
-OutputBaseFilename=招聘自动化工作台-v0.9-Setup
+OutputBaseFilename=招聘自动化工作台-v0.9.1-Pilot-Setup
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
@@ -40,6 +40,6 @@ Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: 
 Filename: "{app}\{#MyAppExeName}"; Description: "启动 {#MyAppName}"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
-; 用户数据库、浏览器登录状态和诊断文件位于 LOCALAPPDATA\RecruitmentWorkbench，
-; 默认不随卸载删除，避免误删候选人数据。由用户在应用内显式清理。
+; 用户数据库、浏览器登录状态、备份和诊断文件位于 LOCALAPPDATA\RecruitmentWorkbench。
+; 默认不随卸载删除，避免误删候选人数据；客户退出 Pilot 时必须显式处理。
 Type: filesandordirs; Name: "{app}"
