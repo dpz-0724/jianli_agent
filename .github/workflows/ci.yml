@@ -31,6 +31,7 @@ jobs:
     runs-on: windows-latest
     env:
       QT_QPA_PLATFORM: offscreen
+      PYTHONUTF8: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -40,6 +41,6 @@ jobs:
       - name: Install pinned production dependencies
         run: python -m pip install -r requirements.txt
       - name: Import modern desktop entrypoint
-        run: python -c "import PySide6; import workbench_app; import workbench.qt_ui; import workbench.browser_worker; print('DESKTOP_IMPORT_OK')"
+        run: python -c "import PySide6; import workbench_app; import workbench.qt_workspace_runtime; import workbench.browser_worker; print('DESKTOP_IMPORT_OK')"
       - name: Run product health check
         run: python -m workbench.healthcheck
