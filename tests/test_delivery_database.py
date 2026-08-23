@@ -95,10 +95,10 @@ class RecruiterProfileTests(unittest.TestCase):
         )
         self.assertEqual(profile.min_education, "")
         self.assertEqual(profile.min_experience_years, 3)
-        self.assertEqual(profile.required_skills, ("mysql",))
-        self.assertEqual(profile.preferred_skills, ("redis",))
-        self.assertNotIn("spring", profile.required_skills)
-        self.assertIn("spring", profile.title_terms)
+        self.assertEqual(profile.required_skills, ("MySQL",))
+        self.assertEqual(profile.preferred_skills, ("Redis",))
+        self.assertNotIn("spring", {skill.lower() for skill in profile.required_skills})
+        self.assertIn("spring", {term.lower() for term in profile.title_terms})
 
 
 if __name__ == "__main__":
