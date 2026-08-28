@@ -14,6 +14,8 @@ import queue
 import sys
 import threading
 import time
+import csv
+import io
 from pathlib import Path
 from typing import Any
 
@@ -23,7 +25,8 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import uvicorn  # noqa: E402
-from fastapi import FastAPI, Body  # noqa: E402
+from urllib.parse import quote  # noqa: E402
+from fastapi import FastAPI, Body, Response  # noqa: E402
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse  # noqa: E402
 
 from workbench.database import WorkbenchDB, default_data_dir  # noqa: E402
@@ -249,28 +252,160 @@ def api_status(job_id: int):
     return {"ok": True, "state": st}
 
 
+def _serialize_candidate(r: dict, *, detail: bool = False) -> dict:
+    item = {
+        "id": r["job_candidate_id"],
+        "candidate_id": r.get("candidate_id"),
+        "name": r.get("name", "") or "（未署名）",
+        "title": r.get("title", ""),
+        "location": r.get("location", ""),
+        "education": r.get("education", ""),
+        "experience": r.get("experience", ""),
+        "age": r.get("age", 0),
+        "salary": r.get("expected_salary", ""),
+        "certificates": r.get("certificates", ""),
+        "skills": r.get("skills", ""),
+        "activity": r.get("activity", ""),
+        "status": r.get("assessment_status") or "REVIEW",
+        "score": round(float(r.get("fit_score") or 0), 1),
+        "reasons": r.get("reasons", [])[:8],
+        "stage": r.get("stage") or "TO_REVIEW",
+        "note": r.get("note", ""),
+    }
+    if detail:
+        item["evidence"] = r.get("evidence", {})
+        item["text"] = r.get("text", "")
+        item["source_url"] = r.get("source_url", "")
+        item["last_seen_at"] = r.get("last_seen_at", "")
+    return item
+
+
+_SORT_KEYS = {
+    "score": lambda r: float(r.get("fit_score") or 0),
+    "age": lambda r: int(r.get("age") or 0),
+    "experience": lambda r: r.get("experience", ""),
+    "salary": lambda r: r.get("expected_salary", ""),
+    "education": lambda r: r.get("education", ""),
+}
+
+
+@app.get("/api/jobs/{job_id}")
+def api_job_detail(job_id: int):
+    job = db.get_job(job_id)
+    if not job:
+        return JSONResponse({"ok": False, "error": "岗位不存在"}, status_code=404)
+    profile = service.load_profile(job_id)
+    rows = db.list_job_candidates(job_id, limit=100000)
+    st = state.get(job_id)
+    return {"ok": True, "job": {
+        "id": job_id, "title": job["title"], "keyword": job.get("keyword", ""),
+        "jd": job.get("jd", ""), "created_at": job.get("created_at", ""),
+        "profile": {
+            "keyword": profile.keyword, "required_skills": list(profile.required_skills),
+            "preferred_skills": list(profile.preferred_skills), "min_education": profile.min_education,
+            "min_experience_years": profile.min_experience_years, "locations": list(profile.locations),
+            "age_min": profile.age_min, "age_max": profile.age_max, "certificates": list(profile.certificates),
+        },
+        "stats": {
+            "total": len(rows),
+            "pass": sum(1 for r in rows if r.get("assessment_status") == "PASS"),
+            "review": sum(1 for r in rows if r.get("assessment_status") == "REVIEW"),
+            "conflict": sum(1 for r in rows if r.get("assessment_status") == "CONFLICT"),
+        },
+        "run_status": st.get("status", "IDLE"), "run_finished": st.get("finished", False),
+    }}
+
+
 @app.get("/api/jobs/{job_id}/candidates")
-def api_candidates(job_id: int, status: str = "ALL", limit: int = 500):
-    rows = db.list_job_candidates(job_id, assessment_status=status, limit=limit)
-    out = []
+def api_candidates(job_id: int, status: str = "ALL", stage: str = "ALL", search: str = "",
+                   education: str = "", sort: str = "score", order: str = "desc", limit: int = 1000):
+    rows = db.list_job_candidates(job_id, assessment_status=status,
+                                  stage=stage, search=search, limit=100000)
+    if education:
+        rows = [r for r in rows if (r.get("education") or "") == education]
+    key = _SORT_KEYS.get(sort, _SORT_KEYS["score"])
+    rows.sort(key=key, reverse=(order != "asc"))
+    out = [_serialize_candidate(r) for r in rows[:limit]]
+    return {"ok": True, "candidates": out, "total": len(rows)}
+
+
+@app.get("/api/candidates/{job_candidate_id}")
+def api_candidate_detail(job_candidate_id: int):
+    r = db.get_job_candidate(job_candidate_id)
+    if not r:
+        return JSONResponse({"ok": False, "error": "候选人不存在"}, status_code=404)
+    item = _serialize_candidate(r, detail=True)
+    item["follow_ups"] = db.list_follow_ups(job_candidate_id)
+    return {"ok": True, "candidate": item}
+
+
+@app.patch("/api/candidates/{job_candidate_id}")
+def api_update_candidate(job_candidate_id: int, payload: dict = Body(...)):
+    stage = payload.get("stage")
+    note = payload.get("note")
+    try:
+        db.update_job_candidate(job_candidate_id, stage=stage, note=note, actor="web")
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
+    if stage:
+        db.add_follow_up(job_candidate_id, action=f"STAGE:{stage}", note=note or "", actor="web")
+    return {"ok": True}
+
+
+@app.put("/api/jobs/{job_id}/profile")
+def api_update_profile(job_id: int, payload: dict = Body(...)):
+    if not db.get_job(job_id):
+        return JSONResponse({"ok": False, "error": "岗位不存在"}, status_code=404)
+    profile = service.update_job_profile(
+        job_id,
+        keyword=payload.get("keyword"),
+        min_education=payload.get("min_education"),
+        min_experience_years=payload.get("min_experience_years"),
+        age_min=payload.get("age_min"),
+        age_max=payload.get("age_max"),
+        locations=payload.get("locations"),
+        required_skills=payload.get("required_skills"),
+        preferred_skills=payload.get("preferred_skills"),
+        certificates=payload.get("certificates"),
+        confirmed_by="web",
+    )
+    return {"ok": True, "profile": {
+        "keyword": profile.keyword, "required_skills": list(profile.required_skills),
+        "preferred_skills": list(profile.preferred_skills), "min_education": profile.min_education,
+        "min_experience_years": profile.min_experience_years, "locations": list(profile.locations),
+        "age_min": profile.age_min, "age_max": profile.age_max, "certificates": list(profile.certificates),
+    }}
+
+
+@app.get("/api/jobs/{job_id}/export")
+def api_export(job_id: int):
+    job = db.get_job(job_id)
+    if not job:
+        return JSONResponse({"ok": False, "error": "岗位不存在"}, status_code=404)
+    rows = db.list_job_candidates(job_id, limit=100000)
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["姓名", "职位", "匹配结论", "匹配分", "招聘状态", "城市", "学历", "经验",
+                "年龄", "期望薪资", "证书", "在职状态", "技能", "匹配理由", "备注"])
+    status_cn = {"PASS": "匹配", "REVIEW": "待复核", "CONFLICT": "不符"}
+    stage_cn = {"NEW": "新入库", "TO_REVIEW": "待评估", "TO_CONTACT": "待联系", "CONTACTED": "已联系",
+                "INTERVIEW": "约面", "OFFER": "已发offer", "HIRED": "已入职", "REJECTED": "已淘汰", "TALENT_POOL": "人才库"}
     for r in rows:
-        out.append({
-            "id": r["job_candidate_id"],
-            "name": r.get("name", "") or "（未署名）",
-            "title": r.get("title", ""),
-            "location": r.get("location", ""),
-            "education": r.get("education", ""),
-            "experience": r.get("experience", ""),
-            "age": r.get("age", 0),
-            "salary": r.get("expected_salary", ""),
-            "certificates": r.get("certificates", ""),
-            "skills": r.get("skills", ""),
-            "activity": r.get("activity", ""),
-            "status": r.get("assessment_status") or "REVIEW",
-            "score": round(float(r.get("fit_score") or 0), 1),
-            "reasons": r.get("reasons", [])[:6],
-        })
-    return {"ok": True, "candidates": out}
+        w.writerow([
+            r.get("name", ""), r.get("title", ""),
+            status_cn.get(r.get("assessment_status"), r.get("assessment_status", "")),
+            round(float(r.get("fit_score") or 0), 1),
+            stage_cn.get(r.get("stage"), r.get("stage", "")),
+            r.get("location", ""), r.get("education", ""), r.get("experience", ""),
+            r.get("age", 0) or "", r.get("expected_salary", ""), r.get("certificates", ""),
+            r.get("activity", ""), r.get("skills", ""),
+            "；".join(r.get("reasons", [])[:5]), r.get("note", ""),
+        ])
+    # UTF-8 BOM 让 Excel 正确识别中文
+    data = "﻿" + buf.getvalue()
+    fname = f"候选人_{job['title']}_{job_id}.csv"
+    return Response(content=data.encode("utf-8"), media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(fname)}"})
 
 
 @app.get("/api/preview.png")

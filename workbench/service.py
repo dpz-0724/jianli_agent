@@ -146,6 +146,31 @@ class RecruitmentService:
             conflict_count=counts[AssessmentStatus.CONFLICT],
         )
 
+    def update_job_profile(self, job_id: int, *, keyword=None, min_education=None,
+                           min_experience_years=None, age_min=None, age_max=None,
+                           locations=None, required_skills=None, preferred_skills=None,
+                           certificates=None, confirmed_by: str = "web") -> RequirementProfile:
+        """用可编辑字段覆盖画像并重算全部候选人。"""
+        cur = self.load_profile(job_id)
+        profile = RequirementProfile(
+            keyword=(keyword if keyword is not None else cur.keyword),
+            required_skills=tuple(required_skills) if required_skills is not None else cur.required_skills,
+            preferred_skills=tuple(preferred_skills) if preferred_skills is not None else cur.preferred_skills,
+            min_education=(min_education if min_education is not None else cur.min_education),
+            min_experience_years=(int(min_experience_years) if min_experience_years is not None else cur.min_experience_years),
+            locations=tuple(locations) if locations is not None else cur.locations,
+            title_terms=cur.title_terms,
+            age_min=(int(age_min) if age_min is not None else cur.age_min),
+            age_max=(int(age_max) if age_max is not None else cur.age_max),
+            certificates=tuple(certificates) if certificates is not None else cur.certificates,
+            source_evidence=cur.source_evidence,
+            parser_version=cur.parser_version,
+        )
+        self.db.update_job(job_id, profile=profile, profile_status=ProfileStatus.CONFIRMED)
+        self.db.confirm_job_profile(job_id, confirmed_by=confirmed_by)
+        self.reassess_job(job_id)
+        return profile
+
     def reassess_job(self, job_id: int) -> IngestSummary:
         profile = self.load_profile(job_id)
         rows = self.db.list_job_candidates(job_id, limit=100000)
@@ -165,6 +190,9 @@ class RecruitmentService:
                 "skills": row.get("skills", ""),
                 "text": row.get("text", ""),
                 "source_url": row.get("source_url", ""),
+                "age": row.get("age", 0),
+                "expected_salary": row.get("expected_salary", ""),
+                "certificates": row.get("certificates", ""),
                 "platform": "zhilian",
             }
             assessment = assess_candidate(candidate, profile)
