@@ -54,6 +54,7 @@ class BrowserWorker:
         self._bring_front_requested = threading.Event()
         self._active_request_id = ""
         self._active_run_id: int | str = ""
+        self._last_preview_ts = 0.0
 
     def start(self) -> None:
         if not self._started:
@@ -99,6 +100,16 @@ class BrowserWorker:
         self.events.put(BrowserEvent(event=event, request_id=request_id, payload=payload))
 
     def _ensure_bot(self) -> ProductCandidateSearcher:
+        # 健壮性：若上一次的浏览器已崩溃/被关闭，自愈重建，避免本轮直接报 "page closed"
+        if self._bot is not None:
+            try:
+                ctx = getattr(self._bot, "_context", None)
+                page = getattr(self._bot, "page", None)
+                dead = ctx is None or page is None or page.is_closed()
+            except Exception:
+                dead = True
+            if dead:
+                self._reset_bot()
         if self._bot is None:
             self._bot = ProductCandidateSearcher(dict(self.browser_config), _NoopLegacyDB())
             self._bot.launch()
@@ -146,6 +157,15 @@ class BrowserWorker:
         self._bot = None
 
     def _control(self, bot: Any, request_id: str, run_id: Any, stage: str, page_no: int, count: int) -> None:
+        # 实时画面：节流周期截图，供网页/桌面端展示招聘过程
+        now = time.time()
+        if now - self._last_preview_ts >= 1.2:
+            self._last_preview_ts = now
+            try:
+                target = default_data_dir() / "preview" / "latest.png"
+                bot.capture_preview(target)
+            except Exception:
+                pass
         if self._bring_front_requested.is_set():
             self._bring_front_requested.clear()
             try:
@@ -256,6 +276,16 @@ class BrowserWorker:
                     checkpoint={"last_completed_page": page_no, "found_count": count, "query": query},
                 )
 
+            def on_page(page_no: int, page_candidates: list) -> None:
+                self._emit(
+                    "PAGE_BATCH",
+                    command.request_id,
+                    run_id=run_id,
+                    page_no=page_no,
+                    count=len(page_candidates),
+                    candidates=page_candidates,
+                )
+
             candidates = bot.search_and_scrape_controlled(
                 query,
                 max_pages=max_pages,
@@ -263,6 +293,7 @@ class BrowserWorker:
                 start_page=start_page,
                 on_progress=on_progress,
                 on_checkpoint=on_checkpoint,
+                on_page=on_page,
                 control=lambda stage, page_no, count: self._control(
                     bot, command.request_id, run_id, stage, page_no, count
                 ),

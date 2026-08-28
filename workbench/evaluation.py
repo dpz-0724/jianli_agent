@@ -259,13 +259,14 @@ def parse_candidate_experience(text: str) -> ExperienceRange | None:
 def sanitize_candidate(candidate: dict) -> dict:
     """Keep only fields required for this workflow.
 
-    This intentionally drops age, gender, phone and other sensitive/non-job-related
-    attributes from assessment input. Contact data can be handled in a separate,
-    permission-controlled workflow later.
+    age / expected_salary / certificates 是招聘方关心的展示与可选筛选字段，
+    采集入库并在界面展示；但**不进入硬性匹配打分**——年龄、性别不参与
+    assess_candidate 评分，避免误杀，是否按年龄/证书筛选由招聘方显式决定。
     """
     allowed = (
         "platform_uid", "name", "title", "location", "education", "experience",
         "activity", "skills", "text", "source", "source_url", "platform",
+        "age", "expected_salary", "certificates",
     )
     return {key: candidate.get(key, "") for key in allowed}
 

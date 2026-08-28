@@ -162,6 +162,7 @@ class ProductCandidateSearcher(CandidateSearcher):
         start_page: int = 1,
         on_progress: Callable[[int, int], None] | None = None,
         on_checkpoint: Callable[[int, int], None] | None = None,
+        on_page: Callable[[int, list], None] | None = None,
         control: Callable[[str, int, int], None] | None = None,
     ) -> list[dict[str, Any]]:
         def check(stage: str, page_no: int, count: int) -> None:
@@ -188,6 +189,7 @@ class ProductCandidateSearcher(CandidateSearcher):
                     )
                 break
             cards = self.page.query_selector_all(selector)
+            page_new: list[dict[str, Any]] = []
             for card in cards:
                 check("before_candidate", page_no, len(candidates))
                 candidate = self._parse_search_card(card)
@@ -198,10 +200,13 @@ class ProductCandidateSearcher(CandidateSearcher):
                     continue
                 seen.add(key)
                 candidates.append(candidate)
+                page_new.append(candidate)
                 if on_progress:
                     on_progress(len(candidates), page_no)
                 if len(candidates) >= max_count:
                     break
+            if on_page and page_new:
+                on_page(page_no, page_new)
             if on_checkpoint:
                 on_checkpoint(page_no, len(candidates))
             check("after_page", page_no, len(candidates))

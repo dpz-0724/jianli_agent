@@ -262,14 +262,15 @@ class DeliveryDatabaseMixin:
                 """
                 INSERT INTO candidates(
                     canonical_key,platform,platform_uid,name,title,location,education,experience,
-                    activity,skills,text,source_url,first_seen_at,last_seen_at,merged_into_candidate_id
-                ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL)
+                    activity,skills,text,source_url,age,expected_salary,certificates,first_seen_at,last_seen_at,merged_into_candidate_id
+                ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL)
                 """,
                 (
                     canonical_key, platform, platform_uid, data.get("name", ""), data.get("title", ""),
                     data.get("location", ""), data.get("education", ""), data.get("experience", ""),
                     data.get("activity", ""), data.get("skills", ""), data.get("text", ""),
-                    source_url, now, now,
+                    source_url, int(data.get("age") or 0), str(data.get("expected_salary") or ""),
+                    str(data.get("certificates") or ""), now, now,
                 ),
             )
             candidate_id = int(cur.lastrowid)
@@ -288,6 +289,9 @@ class DeliveryDatabaseMixin:
                     skills=COALESCE(NULLIF(?,''),skills),
                     text=COALESCE(NULLIF(?,''),text),
                     source_url=COALESCE(NULLIF(?,''),source_url),
+                    age=CASE WHEN ?>0 THEN ? ELSE age END,
+                    expected_salary=COALESCE(NULLIF(?,''),expected_salary),
+                    certificates=COALESCE(NULLIF(?,''),certificates),
                     last_seen_at=?
                 WHERE id=?
                 """,
@@ -295,7 +299,10 @@ class DeliveryDatabaseMixin:
                     platform, platform_uid or "", data.get("name", ""), data.get("title", ""),
                     data.get("location", ""), data.get("education", ""), data.get("experience", ""),
                     data.get("activity", ""), data.get("skills", ""), data.get("text", ""),
-                    source_url, now, candidate_id,
+                    source_url,
+                    int(data.get("age") or 0), int(data.get("age") or 0),
+                    str(data.get("expected_salary") or ""), str(data.get("certificates") or ""),
+                    now, candidate_id,
                 ),
             )
         self._attach_identities_conn(conn, candidate_id, identities)

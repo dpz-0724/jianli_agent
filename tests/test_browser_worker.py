@@ -31,6 +31,7 @@ class FakeBot:
         on_progress,
         on_checkpoint,
         control,
+        on_page=None,
     ):
         self.thread_id = threading.get_ident()
         result = []
@@ -39,6 +40,8 @@ class FakeBot:
             time.sleep(0.03)
             result.append({"platform": "demo", "platform_uid": str(page_no), "name": "A", "title": query})
             on_progress(len(result), page_no)
+            if on_page:
+                on_page(page_no, [result[-1]])
             on_checkpoint(page_no, len(result))
             if len(result) >= max_count:
                 break

@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS candidates (
  title TEXT NOT NULL DEFAULT '', location TEXT NOT NULL DEFAULT '', education TEXT NOT NULL DEFAULT '',
  experience TEXT NOT NULL DEFAULT '', activity TEXT NOT NULL DEFAULT '', skills TEXT NOT NULL DEFAULT '',
  text TEXT NOT NULL DEFAULT '', source_url TEXT NOT NULL DEFAULT '',
+ age INTEGER NOT NULL DEFAULT 0, expected_salary TEXT NOT NULL DEFAULT '', certificates TEXT NOT NULL DEFAULT '',
  first_seen_at TEXT NOT NULL, last_seen_at TEXT NOT NULL,
  merged_into_candidate_id INTEGER REFERENCES candidates(id) ON DELETE SET NULL
 );
@@ -143,6 +144,14 @@ def migrate_schema(conn: sqlite3.Connection) -> None:
         conn.execute(
             "ALTER TABLE candidates ADD COLUMN merged_into_candidate_id INTEGER REFERENCES candidates(id) ON DELETE SET NULL"
         )
+    # v3+ 新增候选人全字段：年龄/期望薪资/证书（老库增量补齐）
+    for name, definition in (
+        ("age", "INTEGER NOT NULL DEFAULT 0"),
+        ("expected_salary", "TEXT NOT NULL DEFAULT ''"),
+        ("certificates", "TEXT NOT NULL DEFAULT ''"),
+    ):
+        if name not in candidates:
+            conn.execute(f"ALTER TABLE candidates ADD COLUMN {name} {definition}")
 
     conn.executescript(
         """

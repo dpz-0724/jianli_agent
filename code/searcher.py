@@ -290,6 +290,9 @@ class CandidateSearcher(BrowserBot):
             "location": _extract_city(extra or text),
             "education": education or _first(EDU_PAT, text),
             "experience": _years_to_segment(exp_text or _first(EXP_PAT, text)),
+            "age": _extract_age(sel_text((".age-label", "[class*='age-label']")) or text),
+            "expected_salary": _extract_salary(extra or text),
+            "certificates": _extract_certificates(text),
             "activity": _map_search_activity(activity_text, career),
             "skills": _extract_skills(text),
             "text": text,
@@ -421,6 +424,49 @@ def _extract_city(text):
         if city in (text or ""):
             return city
     return ""
+
+
+def _extract_age(text):
+    """从「31岁」/卡片文本提取年龄（int）。"""
+    m = re.search(r"(\d{1,2})\s*岁", text or "")
+    if m:
+        age = int(m.group(1))
+        return age if 16 <= age <= 65 else 0
+    return 0
+
+
+def _extract_salary(text):
+    """从期望信息提取期望薪资，如「1.3万-2万」「8千-1.4万」「8-12K」。"""
+    t = text or ""
+    m = re.search(r"(\d+(?:\.\d+)?)\s*万\s*[-—~至到]\s*(\d+(?:\.\d+)?)\s*万", t)
+    if m:
+        return f"{m.group(1)}万-{m.group(2)}万"
+    m = re.search(r"(\d+(?:\.\d+)?)\s*千\s*[-—~至到]\s*(\d+(?:\.\d+)?)\s*(?:万|千)", t)
+    if m:
+        return f"{m.group(1)}千-{m.group(2)}万" if "万" in m.group(0) else m.group(0)
+    m = re.search(r"(\d+(?:\.\d+)?)\s*[-—~至到]\s*(\d+(?:\.\d+)?)\s*[kK]", t)
+    if m:
+        return f"{m.group(1)}-{m.group(2)}K"
+    return ""
+
+
+_CERT_PAT = re.compile(
+    r"(驾驶证|驾照|C1|C2|普通话[一二]级|教师资格证|会计证|CPA|注册会计师|英语[四六]级|CET-[46]|计算机二级|"
+    r"护士证|执业药师|电工证|焊工证|叉车证|健康证|育婴师|保育员|一[二]级建造师|一二建|二建|"
+    r"造价工程师|造价师|消防工程师|监理工程师|安全工程师|法律职业资格|证券从业|基金从业|银行从业|"
+    r"FRM|CFA|PMP|软考|人力资源管理师|导游证|营养师|心理咨询师|社工证)",
+    re.IGNORECASE)
+
+
+def _extract_certificates(text):
+    """从候选人卡片文本/技能里识别其持有的证书。"""
+    found = []
+    for m in _CERT_PAT.finditer(text or ""):
+        v = m.group(1).upper() if re.fullmatch(r"[A-Za-z0-9-]+", m.group(1)) else m.group(1)
+        v = {"C1": "驾驶证(C1)", "C2": "驾驶证(C2)", "驾照": "驾驶证"}.get(m.group(1), v)
+        if v not in found:
+            found.append(v)
+    return "、".join(found)
 
 
 def _map_search_activity(tag_text, career_text=""):

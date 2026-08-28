@@ -28,14 +28,15 @@ class CandidateMixin:
                     """
                     INSERT INTO candidates(
                         canonical_key,platform,platform_uid,name,title,location,education,experience,
-                        activity,skills,text,source_url,first_seen_at,last_seen_at
-                    ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                        activity,skills,text,source_url,age,expected_salary,certificates,first_seen_at,last_seen_at
+                    ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                     """,
                     (
                         canonical_key, platform, platform_uid, data.get("name", ""), data.get("title", ""),
                         data.get("location", ""), data.get("education", ""), data.get("experience", ""),
                         data.get("activity", ""), data.get("skills", ""), data.get("text", ""),
-                        source_url, now, now,
+                        source_url, int(data.get("age") or 0), str(data.get("expected_salary") or ""),
+                        str(data.get("certificates") or ""), now, now,
                     ),
                 )
                 candidate_id = int(cur.lastrowid)
@@ -44,14 +45,16 @@ class CandidateMixin:
                 conn.execute(
                     """
                     UPDATE candidates SET platform=?,platform_uid=COALESCE(?,platform_uid),name=?,title=?,
-                        location=?,education=?,experience=?,activity=?,skills=?,text=?,source_url=?,last_seen_at=?
+                        location=?,education=?,experience=?,activity=?,skills=?,text=?,source_url=?,
+                        age=?,expected_salary=?,certificates=?,last_seen_at=?
                     WHERE id=?
                     """,
                     (
                         platform, platform_uid, data.get("name", ""), data.get("title", ""),
                         data.get("location", ""), data.get("education", ""), data.get("experience", ""),
                         data.get("activity", ""), data.get("skills", ""), data.get("text", ""),
-                        source_url, now, candidate_id,
+                        source_url, int(data.get("age") or 0), str(data.get("expected_salary") or ""),
+                        str(data.get("certificates") or ""), now, candidate_id,
                     ),
                 )
             cur = conn.execute(
@@ -139,6 +142,7 @@ class CandidateMixin:
                 SELECT jc.id AS job_candidate_id,jc.stage,jc.owner,jc.note,jc.next_follow_up_at,
                     c.id AS candidate_id,c.name,c.title,c.location,c.education,c.experience,
                     c.activity,c.skills,c.text,c.source_url,c.last_seen_at,
+                    c.age,c.expected_salary,c.certificates,
                     a.id AS assessment_id,a.status AS assessment_status,a.fit_score,
                     a.reasons_json,a.evidence_json,a.engine_version,a.created_at AS assessed_at
                 FROM job_candidates jc JOIN candidates c ON c.id=jc.candidate_id

@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>简历智能体 · 智联招聘候选人筛选</title>
+<style>
+  :root{
+    --bg:#f4f6f9; --card:#ffffff; --line:#e6e9f0; --line2:#d8dde8;
+    --txt:#1d2433; --sub:#5b6472; --mut:#8a93a6;
+    --pri:#2f5cff; --pri-d:#1f47d6; --pri-soft:#eef2ff;
+    --green:#1a9e6b; --green-soft:#e6f6ef;
+    --amber:#c07a10; --amber-soft:#fdf3e2;
+    --red:#d0453e; --red-soft:#fceceb;
+    --shadow:0 1px 2px rgba(16,24,40,.05),0 4px 16px rgba(16,24,40,.06);
+    --shadow-lg:0 8px 30px rgba(16,24,40,.12);
+    --r:10px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:"PingFang SC","Microsoft YaHei",system-ui,-apple-system,sans-serif;
+    background:var(--bg);color:var(--txt);min-height:100vh;font-size:14px;
+    -webkit-font-smoothing:antialiased}
+  .wrap{max-width:1160px;margin:0 auto;padding:0 24px 80px}
+
+  /* topbar */
+  .topbar{background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:50}
+  .topbar-in{max-width:1160px;margin:0 auto;padding:0 24px;height:62px;display:flex;align-items:center;gap:13px}
+  .mark{width:34px;height:34px;border-radius:8px;background:var(--pri);color:#fff;display:grid;
+    place-items:center;font-size:17px;font-weight:700}
+  .brand h1{font-size:16px;font-weight:700;letter-spacing:.2px}
+  .brand p{font-size:12px;color:var(--mut);margin-top:1px}
+  .top-right{margin-left:auto;display:flex;align-items:center;gap:8px;font-size:12px;color:var(--sub)}
+  .on-dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 0 3px var(--green-soft)}
+
+  /* page head */
+  .pagehead{padding:34px 0 26px}
+  .pagehead h2{font-size:26px;font-weight:700;letter-spacing:.2px}
+  .pagehead p{color:var(--sub);font-size:14px;margin-top:9px}
+
+  /* stepper */
+  .stepper{display:flex;background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+    box-shadow:var(--shadow);margin-bottom:22px;overflow:hidden}
+  .stp{flex:1;padding:16px 20px;display:flex;align-items:center;gap:12px;position:relative}
+  .stp+.stp{border-left:1px solid var(--line)}
+  .stp .dot{width:26px;height:26px;border-radius:50%;background:#eef0f5;color:var(--mut);display:grid;
+    place-items:center;font-size:13px;font-weight:700;flex-shrink:0}
+  .stp .lbl{font-size:13px;color:var(--mut);font-weight:600}
+  .stp .lbl small{display:block;font-size:11px;color:var(--mut);font-weight:400;margin-top:1px}
+  .stp.active{background:var(--pri-soft)}
+  .stp.active .dot{background:var(--pri);color:#fff}
+  .stp.active .lbl{color:var(--pri)}
+  .stp.done .dot{background:var(--green);color:#fff}
+  .stp.done .lbl{color:var(--green)}
+
+  /* card */
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+    box-shadow:var(--shadow);padding:28px;margin-bottom:22px}
+  .card h3{font-size:16px;font-weight:700;margin-bottom:5px;display:flex;align-items:center;gap:10px}
+  .card h3::before{content:"";width:3px;height:16px;background:var(--pri);border-radius:2px}
+  .card .hint{color:var(--sub);font-size:13px;margin-bottom:22px;line-height:1.6}
+
+  label{display:block;font-size:13px;color:var(--sub);margin:18px 0 7px;font-weight:600}
+  label small{color:var(--mut);font-weight:400}
+  input,textarea{width:100%;background:#fff;border:1px solid var(--line2);border-radius:8px;
+    padding:11px 13px;color:var(--txt);font-size:14px;font-family:inherit;outline:none;transition:all .15s}
+  input:focus,textarea:focus{border-color:var(--pri);box-shadow:0 0 0 3px rgba(47,92,255,.12)}
+  textarea{min-height:150px;resize:vertical;line-height:1.75}
+  .row{display:flex;gap:16px}.row>div{flex:1}
+
+  .btn{border:1px solid transparent;border-radius:8px;padding:11px 22px;font-size:14px;font-weight:600;
+    cursor:pointer;font-family:inherit;transition:all .15s;display:inline-flex;align-items:center;gap:7px}
+  .btn-pri{background:var(--pri);color:#fff}
+  .btn-pri:hover{background:var(--pri-d)}
+  .btn-pri:disabled{opacity:.55;cursor:not-allowed}
+  .btn-ghost{background:#fff;border-color:var(--line2);color:var(--sub)}
+  .btn-ghost:hover{border-color:var(--pri);color:var(--pri)}
+  .btn-danger{background:#fff;border-color:var(--red);color:var(--red)}
+  .btn-danger:hover{background:var(--red-soft)}
+  .btnrow{display:flex;gap:12px;margin-top:24px;justify-content:flex-end}
+
+  /* analysis */
+  .anlz{display:none;margin-top:4px}
+  .anlz.show{display:block;animation:rise .35s}
+  @keyframes rise{from{opacity:0;transform:translateY(10px)}}
+  .divider{height:1px;background:var(--line);margin:28px 0 24px}
+  .chipgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px}
+  .chip{background:#f8f9fc;border:1px solid var(--line);border-radius:8px;padding:13px 15px}
+  .chip .k{font-size:12px;color:var(--mut);margin-bottom:6px}
+  .chip .v{font-size:14px;font-weight:600}
+  .chip.hl{background:var(--pri-soft);border-color:#c5d4ff}
+  .chip.hl .v{color:var(--pri)}
+  .tags{display:flex;flex-wrap:wrap;gap:7px}
+  .tag{background:#f1f3f9;border:1px solid var(--line);color:var(--sub);font-size:12px;padding:4px 12px;border-radius:6px}
+  .tag.c{background:var(--amber-soft);border-color:#f0dcae;color:var(--amber)}
+  .tag.s{background:var(--pri-soft);border-color:#c5d4ff;color:var(--pri)}
+
+  /* live */
+  .live{display:none}
+  .live.show{display:block;animation:rise .35s}
+  .split{display:grid;grid-template-columns:1.12fr .88fr;gap:22px}
+  .screen{background:#0d1117;border:1px solid var(--line2);border-radius:8px;overflow:hidden;position:relative;min-height:452px}
+  .screen .bar{display:flex;align-items:center;gap:6px;padding:10px 13px;background:#161b22;border-bottom:1px solid #262d38}
+  .screen .bar i{width:10px;height:10px;border-radius:50%;display:inline-block}
+  .screen .bar i:nth-child(1){background:#ff5f57}.screen .bar i:nth-child(2){background:#febc2e}.screen .bar i:nth-child(3){background:#28c840}
+  .screen .bar span{margin-left:8px;font-size:12px;color:#9aa4b2;display:flex;align-items:center;gap:7px}
+  .live-dot{width:7px;height:7px;border-radius:50%;background:#ff5f57;animation:blink 1.3s infinite}
+  @keyframes blink{50%{opacity:.3}}
+  .screen img{width:100%;display:block;min-height:392px;object-fit:contain;background:#000}
+  .screen .empty{position:absolute;inset:48px 0 0;display:grid;place-items:center;font-size:13px;text-align:center;line-height:2;color:#8b949e}
+  .spin{width:30px;height:30px;border:3px solid #2d333b;border-top-color:var(--pri);border-radius:50%;animation:rot .8s linear infinite;margin:0 auto 12px}
+  @keyframes rot{to{transform:rotate(360deg)}}
+  .loginmask{display:none;position:absolute;inset:48px 0 0;background:rgba(13,17,23,.94);place-items:center;text-align:center;z-index:5}
+  .loginmask.show{display:grid}
+  .loginmask .inner{max-width:340px;padding:20px}
+  .loginmask p{color:var(--amber);font-size:15px;margin-bottom:16px;font-weight:600}
+
+  .pignum{display:flex;align-items:baseline;gap:10px;margin:2px 0 13px}
+  .pignum .big{font-size:46px;font-weight:700;color:var(--pri);line-height:1;font-variant-numeric:tabular-nums}
+  .pignum .of{color:var(--mut);font-size:15px}
+  .progress{height:8px;background:#e9ecf2;border-radius:99px;overflow:hidden}
+  .progress i{display:block;height:100%;border-radius:99px;background:var(--pri);width:0;transition:width .6s cubic-bezier(.22,1,.36,1)}
+  .statgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:18px}
+  .stat{background:#f8f9fc;border:1px solid var(--line);border-radius:8px;padding:14px;text-align:center}
+  .stat b{display:block;font-size:26px;font-weight:700;font-variant-numeric:tabular-nums}
+  .stat span{font-size:12px;color:var(--mut)}
+  .stat.pass b{color:var(--green)}.stat.review b{color:var(--amber)}.stat.conflict b{color:var(--red)}
+  .logline{margin-top:16px;font-size:13px;color:var(--sub);background:#f8f9fc;border:1px dashed var(--line2);
+    border-radius:8px;padding:11px 14px;display:flex;gap:9px;align-items:center;min-height:42px}
+  .pulse{width:8px;height:8px;border-radius:50%;background:var(--pri);animation:blink 1.1s infinite;flex-shrink:0}
+
+  /* pool */
+  .pool{margin-top:28px}
+  .pool-head{display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap}
+  .pool-head h4{font-size:16px;font-weight:700;display:flex;align-items:center;gap:10px}
+  .pool-head h4::before{content:"";width:3px;height:16px;background:var(--pri);border-radius:2px}
+  .pool-head .cnt{color:var(--mut);font-size:13px}
+  .filters{display:flex;gap:7px;margin-left:auto}
+  .fbtn{background:#fff;border:1px solid var(--line2);color:var(--sub);font-size:12.5px;padding:6px 15px;
+    border-radius:7px;cursor:pointer;transition:all .15s;font-weight:600}
+  .fbtn.on{background:var(--pri);color:#fff;border-color:var(--pri)}
+  .clist{display:grid;grid-template-columns:repeat(auto-fill,minmax(342px,1fr));gap:14px}
+  .ccard{background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:18px;
+    box-shadow:var(--shadow);transition:all .2s;animation:pop .3s}
+  @keyframes pop{from{opacity:0;transform:translateY(10px)}}
+  .ccard:hover{box-shadow:var(--shadow-lg);border-color:var(--line2)}
+  .ccard .top{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+  .avatar{width:42px;height:42px;border-radius:8px;display:grid;place-items:center;font-weight:700;font-size:17px;color:#fff;flex-shrink:0}
+  .av-g{background:var(--green)}.av-a{background:var(--amber)}.av-r{background:var(--red)}
+  .ccard .nm{font-size:15px;font-weight:700}
+  .ccard .tt{font-size:12px;color:var(--mut);margin-top:2px}
+  .ring{margin-left:auto;position:relative;width:52px;height:52px;flex-shrink:0}
+  .ring svg{transform:rotate(-90deg)}
+  .ring .bg{stroke:#eceff4}
+  .ring .val{stroke-linecap:round;transition:stroke-dashoffset .7s cubic-bezier(.22,1,.36,1)}
+  .ring .num{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;font-weight:700;font-size:14px}
+  .ring .num small{font-size:9px;color:var(--mut);font-weight:400}
+  .stag{font-size:11px;padding:3px 9px;border-radius:5px;font-weight:600}
+  .stag.PASS{background:var(--green-soft);color:var(--green)}
+  .stag.REVIEW{background:var(--amber-soft);color:var(--amber)}
+  .stag.CONFLICT{background:var(--red-soft);color:var(--red)}
+  .meta{display:flex;flex-wrap:wrap;gap:6px;margin:11px 0}
+  .mi{font-size:11.5px;color:var(--sub);background:#f6f7fa;border:1px solid var(--line);padding:3px 9px;border-radius:6px}
+  .mi b{color:var(--txt);font-weight:600}
+  .reasons{font-size:12px;color:var(--mut);line-height:1.65;border-top:1px dashed var(--line);padding-top:10px;margin-top:4px}
+  .reasons li{margin-left:16px;margin-bottom:2px}
+  .emptypool{grid-column:1/-1;text-align:center;color:var(--mut);padding:52px 0;font-size:13px}
+
+  .foot{text-align:center;color:var(--mut);font-size:12px;margin-top:44px;line-height:1.8}
+  .toast{position:fixed;top:24px;left:50%;transform:translateX(-50%) translateY(-12px);background:#1d2433;
+    color:#fff;padding:12px 22px;border-radius:8px;box-shadow:var(--shadow-lg);z-index:99;opacity:0;
+    transition:all .25s;font-size:13px;pointer-events:none}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  @media(max-width:920px){.split{grid-template-columns:1fr}.stepper{flex-wrap:wrap}.stp{min-width:50%;border:none}}
+</style>
+</head>
+<body>
+<div class="toast" id="toast"></div>
+
+<div class="topbar">
+  <div class="topbar-in">
+    <div class="mark">简</div>
+    <div class="brand">
+      <h1>简历智能体</h1>
+      <p>智联招聘候选人智能筛选系统</p>
+    </div>
+    <div class="top-right"><span class="on-dot"></span>智联数据源已连接</div>
+  </div>
+</div>
+
+<div class="wrap">
+  <div class="pagehead">
+    <h2>岗位候选人智能筛选</h2>
+    <p>录入岗位需求，系统自动解析用人标准，实时检索智联招聘候选人，并逐一评估排序。</p>
+  </div>
+
+  <div class="stepper">
+    <div class="stp active" id="stp1"><div class="dot">1</div><div class="lbl">创建岗位<small>录入 JD 或需求</small></div></div>
+    <div class="stp" id="stp2"><div class="dot">2</div><div class="lbl">解析用人标准<small>技能 学历 证书 年龄</small></div></div>
+    <div class="stp" id="stp3"><div class="dot">3</div><div class="lbl">开始筛选<small>实时检索 自动评估</small></div></div>
+    <div class="stp" id="stp4"><div class="dot">4</div><div class="lbl">候选人排序<small>匹配结果与依据</small></div></div>
+  </div>
+
+  <!-- STEP 1+2 -->
+  <div class="card" id="cardJob">
+    <h3>创建招聘岗位</h3>
+    <p class="hint">粘贴岗位 JD 或描述用人需求，系统自动解析出筛选标准：必备技能、学历、经验、证书、年龄、薪资与工作城市，并生成检索关键词。</p>
+    <div class="row">
+      <div>
+        <label>岗位名称 <small style="color:var(--red)">*</small></label>
+        <input id="jTitle" placeholder="例如：销售经理 / Java 后端工程师">
+      </div>
+      <div>
+        <label>检索关键词 <small>（可选，留空由系统生成）</small></label>
+        <input id="jKw" placeholder="例如：销售 / Java">
+      </div>
+    </div>
+    <label>岗位描述 / 用人需求 <small style="color:var(--red)">*</small></label>
+    <textarea id="jJd" placeholder="粘贴 JD 全文，或直接描述需求。例如：&#10;销售经理，大专以上学历，1-3年经验，35岁以下，持驾照及英语四级优先，薪资8-12K，工作地点上海。"></textarea>
+    <div class="btnrow">
+      <button class="btn btn-ghost" onclick="fillDemo()">填充示例</button>
+      <button class="btn btn-pri" id="btnAnalyze" onclick="doAnalyze()">解析用人标准</button>
+    </div>
+
+    <!-- analysis -->
+    <div class="anlz" id="anlz">
+      <div class="divider"></div>
+      <h3>用人标准解析结果</h3>
+      <p class="hint">请核对以下用人标准。确认后点击「开始筛选」，系统将按此标准检索并评估候选人。</p>
+      <div class="chipgrid">
+        <div class="chip hl"><div class="k">检索关键词</div><div class="v" id="aQuery">—</div></div>
+        <div class="chip"><div class="k">岗位</div><div class="v" id="aTitle">—</div></div>
+        <div class="chip"><div class="k">最低学历</div><div class="v" id="aEdu">不限</div></div>
+        <div class="chip"><div class="k">最低经验</div><div class="v" id="aExp">不限</div></div>
+        <div class="chip"><div class="k">年龄要求</div><div class="v" id="aAge">不限</div></div>
+        <div class="chip"><div class="k">薪资区间</div><div class="v" id="aSal">—</div></div>
+      </div>
+      <label>必备技能</label><div class="tags" id="aReq"></div>
+      <label>证书要求</label><div class="tags" id="aCert"></div>
+      <label>工作城市</label><div class="tags" id="aLoc"></div>
+
+      <div class="row" style="margin-top:24px;align-items:flex-end">
+        <div style="max-width:280px">
+          <label>本轮筛选目标人数</label>
+          <input id="jTarget" type="number" value="100" min="10" max="500">
+        </div>
+        <div class="btnrow" style="margin-top:0;flex:1">
+          <button class="btn btn-pri" id="btnStart" onclick="doStart()">开始筛选</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 3: live -->
+  <div class="card live" id="cardLive">
+    <h3>正在筛选 <span id="liveTitle" style="color:var(--pri)"></span></h3>
+    <p class="hint">系统正在实时检索智联招聘候选人。左侧为检索过程画面，候选人将自动进入候选池并完成评估排序。</p>
+    <div class="split">
+      <div class="screen">
+        <div class="bar"><i></i><i></i><i></i><span><span class="live-dot"></span>检索过程实时画面</span></div>
+        <img id="pv" alt="">
+        <div class="empty" id="pvEmpty"><div><div class="spin"></div>正在启动检索…</div></div>
+        <div class="loginmask" id="loginMask"><div class="inner">
+          <p>需要登录智联招聘</p>
+          <button class="btn btn-pri" onclick="showLogin()">弹出浏览器扫码登录</button>
+        </div></div>
+      </div>
+      <div>
+        <div class="pignum"><span class="big" id="nFound">0</span><span class="of">/ <span id="nTarget">100</span> 人</span></div>
+        <div class="progress"><i id="pbar"></i></div>
+        <div class="statgrid">
+          <div class="stat pass"><b id="nPass">0</b><span>匹配</span></div>
+          <div class="stat review"><b id="nReview">0</b><span>待复核</span></div>
+          <div class="stat conflict"><b id="nConflict">0</b><span>不符</span></div>
+        </div>
+        <div class="logline"><span class="pulse"></span><span id="logMsg">准备中…</span></div>
+        <div class="btnrow" style="justify-content:flex-start;margin-top:18px">
+          <button class="btn btn-danger" id="btnStop" onclick="doStop()">停止本轮</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- pool -->
+    <div class="pool">
+      <div class="pool-head">
+        <h4>候选人列表</h4><span class="cnt" id="poolTotal"></span>
+        <div class="filters">
+          <button class="fbtn on" data-f="ALL" onclick="setFilter(this)">全部</button>
+          <button class="fbtn" data-f="PASS" onclick="setFilter(this)">匹配</button>
+          <button class="fbtn" data-f="REVIEW" onclick="setFilter(this)">待复核</button>
+          <button class="fbtn" data-f="CONFLICT" onclick="setFilter(this)">不符</button>
+        </div>
+      </div>
+      <div class="clist" id="clist"><div class="emptypool">候选人将实时显示在这里</div></div>
+    </div>
+  </div>
+
+  <div class="foot">简历智能体 · 本地运行 · 数据不出本机<br>系统辅助初筛，最终录用决策由招聘方作出</div>
+</div>
+
+<script>
+let JOB_ID=null, TIMER=null, PIC_TIMER=null, FILTER="ALL", LAST_COUNT=0;
+
+function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2800)}
+function setStep(n){for(let i=1;i<=4;i++){const e=document.getElementById('stp'+i);e.classList.toggle('active',i===n);e.classList.toggle('done',i<n)}}
+function fillDemo(){
+  document.getElementById('jTitle').value='销售经理';
+  document.getElementById('jJd').value='岗位名称：销售经理\n1. 负责华东区大客户销售，完成业绩指标；\n2. 大专及以上学历，1-3年销售经验；\n3. 35岁以下，持C1驾照，有英语四级证书优先；\n4. 薪资8-12K，工作地点上海、杭州。';
+  toast('已填充示例，点击「解析用人标准」');
+}
+async function api(url,opts){const r=await fetch(url,opts);return r.json()}
+
+function countUp(el,to){const from=parseInt(el.textContent)||0;if(from===to)return;
+  const t0=performance.now(),dur=500;
+  (function tick(t){const p=Math.min(1,(t-t0)/dur);el.textContent=Math.round(from+(to-from)*p);if(p<1)requestAnimationFrame(tick)})(performance.now())}
+
+async function doAnalyze(){
+  const title=document.getElementById('jTitle').value.trim();
+  const jd=document.getElementById('jJd').value.trim();
+  const kw=document.getElementById('jKw').value.trim();
+  if(!title){toast('请填写岗位名称');return}
+  if(!jd&&!kw){toast('请填写岗位描述或检索关键词');return}
+  const btn=document.getElementById('btnAnalyze');btn.disabled=true;btn.textContent='解析中…';
+  try{
+    const r=await api('/api/jobs',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({title,jd,keyword:kw})});
+    if(!r.ok){toast(r.error||'创建失败');return}
+    JOB_ID=r.job_id;renderAnalysis(r.analysis,title);
+    document.getElementById('anlz').classList.add('show');setStep(2);
+    document.getElementById('anlz').scrollIntoView({behavior:'smooth',block:'center'});
+    toast('用人标准解析完成');
+  }finally{btn.disabled=false;btn.textContent='解析用人标准'}
+}
+
+function renderAnalysis(a,title){
+  document.getElementById('aQuery').textContent=a.search_query||title;
+  document.getElementById('aTitle').textContent=a.job_title||title;
+  document.getElementById('aEdu').textContent=a.min_education||'不限';
+  document.getElementById('aExp').textContent=a.min_experience_years?a.min_experience_years+'年':'不限';
+  document.getElementById('aAge').textContent=a.age_max?(a.age_min?a.age_min+'-'+a.age_max+'岁':'≤'+a.age_max+'岁'):'不限';
+  document.getElementById('aSal').textContent=a.salary_range||'—';
+  document.getElementById('aReq').innerHTML=(a.required_skills||[]).map(s=>`<span class="tag">${s}</span>`).join('')||'<span class="tag">—</span>';
+  document.getElementById('aCert').innerHTML=(a.certificates||[]).map(s=>`<span class="tag c">${s}</span>`).join('')||'<span class="tag c">—</span>';
+  document.getElementById('aLoc').innerHTML=(a.locations||[]).map(s=>`<span class="tag s">${s}</span>`).join('')||'<span class="tag s">—</span>';
+}
+
+async function doStart(){
+  if(!JOB_ID){toast('请先解析用人标准');return}
+  const target=parseInt(document.getElementById('jTarget').value||'100');
+  const r=await api(`/api/jobs/${JOB_ID}/start`,{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({target_count:target})});
+  if(!r.ok){toast(r.error||'启动失败');return}
+  document.getElementById('liveTitle').textContent='· '+document.getElementById('jTitle').value;
+  document.getElementById('nTarget').textContent=target;
+  document.getElementById('cardLive').classList.add('show');
+  document.getElementById('pvEmpty').style.display='grid';
+  document.getElementById('loginMask').classList.remove('show');
+  ['nFound','nPass','nReview','nConflict'].forEach(id=>document.getElementById(id).textContent='0');
+  document.getElementById('pbar').style.width='0';
+  setStep(3);LAST_COUNT=0;
+  document.getElementById('clist').innerHTML='<div class="emptypool">候选人将实时显示在这里</div>';
+  document.getElementById('cardLive').scrollIntoView({behavior:'smooth'});
+  startPolling();
+}
+
+function startPolling(){stopPolling();TIMER=setInterval(pollStatus,1200);PIC_TIMER=setInterval(refreshPic,1500);refreshPic()}
+function stopPolling(){if(TIMER)clearInterval(TIMER);if(PIC_TIMER)clearInterval(PIC_TIMER)}
+function refreshPic(){const img=document.getElementById('pv');img.src='/api/preview.png?t='+Date.now();
+  img.onload=()=>{document.getElementById('pvEmpty').style.display='none'}}
+
+async function pollStatus(){
+  if(!JOB_ID)return;
+  try{
+    const r=await api(`/api/jobs/${JOB_ID}/status`);const s=r.state;
+    countUp(document.getElementById('nFound'),s.found||0);
+    document.getElementById('logMsg').textContent=s.message||'运行中…';
+    const tgt=s.target||parseInt(document.getElementById('nTarget').textContent)||100;
+    const pct=Math.min(100,Math.round((s.found||0)/tgt*100));
+    document.getElementById('pbar').style.width=(s.status==='SUCCEEDED'?100:pct)+'%';
+    const st=s.stats||{};
+    countUp(document.getElementById('nPass'),st.pass||0);
+    countUp(document.getElementById('nReview'),st.review||0);
+    countUp(document.getElementById('nConflict'),st.conflict||0);
+    if(s.need_login)document.getElementById('loginMask').classList.add('show');
+    else document.getElementById('loginMask').classList.remove('show');
+    await loadCandidates();
+    if(s.finished){
+      stopPolling();setStep(4);
+      if(s.status==='SUCCEEDED'){toast(`本轮完成，共 ${s.found} 名候选人`);document.getElementById('logMsg').textContent='筛选完成，结果如下'}
+      else if(s.status==='CANCELLED')document.getElementById('logMsg').textContent='已手动停止';
+      else{toast('任务异常：'+(s.error||''));document.getElementById('logMsg').textContent='异常：'+(s.error||'')}
+    }
+  }catch(e){}
+}
+
+async function loadCandidates(){
+  const r=await api(`/api/jobs/${JOB_ID}/candidates?status=${FILTER}&limit=500`);
+  const list=r.candidates||[];
+  document.getElementById('poolTotal').textContent=`共 ${list.length} 人`;
+  if(list.length===0&&LAST_COUNT===0)return;
+  renderPool(list);LAST_COUNT=list.length;
+}
+
+function ringSVG(score,color){
+  const R=22,C=2*Math.PI*R,off=C*(1-Math.min(100,score)/100);
+  return `<svg width="52" height="52"><circle class="bg" cx="26" cy="26" r="${R}" fill="none" stroke-width="4"/>
+    <circle class="val" cx="26" cy="26" r="${R}" fill="none" stroke="${color}" stroke-width="4"
+    stroke-dasharray="${C}" stroke-dashoffset="${off}"/></svg>`;
+}
+
+function renderPool(list){
+  const el=document.getElementById('clist');
+  if(!list.length){el.innerHTML='<div class="emptypool">当前筛选条件下暂无候选人</div>';return}
+  el.innerHTML=list.map(c=>{
+    const color=c.status==='PASS'?'var(--green)':c.status==='REVIEW'?'var(--amber)':'var(--red)';
+    const avc=c.status==='PASS'?'av-g':c.status==='REVIEW'?'av-a':'av-r';
+    const sl=c.status==='PASS'?'匹配':c.status==='REVIEW'?'待复核':'不符';
+    const initial=(c.name||'?')[0];
+    const metas=[];
+    if(c.location)metas.push(`<span class="mi">城市 <b>${c.location}</b></span>`);
+    if(c.education)metas.push(`<span class="mi">学历 <b>${c.education}</b></span>`);
+    if(c.experience)metas.push(`<span class="mi">经验 <b>${c.experience}</b></span>`);
+    if(c.age)metas.push(`<span class="mi">年龄 <b>${c.age}岁</b></span>`);
+    if(c.salary)metas.push(`<span class="mi">期望薪资 <b>${c.salary}</b></span>`);
+    if(c.certificates)metas.push(`<span class="mi">证书 <b>${c.certificates}</b></span>`);
+    if(c.activity)metas.push(`<span class="mi">在职状态 <b>${c.activity}</b></span>`);
+    const reasons=(c.reasons||[]).map(x=>`<li>${x}</li>`).join('');
+    return `<div class="ccard">
+      <div class="top">
+        <div class="avatar ${avc}">${initial}</div>
+        <div><div class="nm">${c.name} <span class="stag ${c.status}">${sl}</span></div><div class="tt">${c.title||'—'}</div></div>
+        <div class="ring">${ringSVG(c.score,color)}<div class="num" style="color:${color}">${c.score}<small>匹配分</small></div></div>
+      </div>
+      <div class="meta">${metas.join('')}</div>
+      ${c.skills?`<div class="meta">${c.skills.split(/[,，、]/).filter(Boolean).slice(0,6).map(s=>`<span class="mi">${s.trim()}</span>`).join('')}</div>`:''}
+      ${reasons?`<ul class="reasons">${reasons}</ul>`:''}
+    </div>`;
+  }).join('');
+}
+function setFilter(btn){document.querySelectorAll('.fbtn').forEach(b=>b.classList.remove('on'));btn.classList.add('on');FILTER=btn.dataset.f;loadCandidates()}
+async function doStop(){if(!JOB_ID)return;await api(`/api/jobs/${JOB_ID}/stop`,{method:'POST'});toast('已发送停止指令')}
+async function showLogin(){if(!JOB_ID)return;await api(`/api/jobs/${JOB_ID}/login_shown`,{method:'POST'});toast('浏览器窗口已弹出，请扫码登录')}
+</script>
+</body>
+</html>
