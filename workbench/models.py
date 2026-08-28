@@ -84,6 +84,9 @@ class RequirementProfile:
     min_experience_years: int = 0
     locations: tuple[str, ...] = ()
     title_terms: tuple[str, ...] = ()
+    age_min: int = 0
+    age_max: int = 0
+    certificates: tuple[str, ...] = ()
     source_evidence: dict[str, list[str]] = field(default_factory=dict)
     parser_version: str = "rules-v1"
 

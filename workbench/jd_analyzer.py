@@ -23,6 +23,8 @@ from .evaluation import (
     _extract_min_years,
     _extract_locations,
     _extract_skills_by_context,
+    _extract_certificates,
+    _extract_age_range,
     _split_terms,
 )
 
@@ -87,39 +89,6 @@ class JobAnalysis:
             "summary": self.summary,
             "evidence": self.evidence,
         }
-
-
-def _extract_certificates(text: str) -> tuple[list[str], list[str]]:
-    found, evidence = [], []
-    low = (text or "").lower()
-    for cert in CERT_KEYWORDS:
-        if _contains_token(low, cert) and cert not in found:
-            found.append(cert)
-            for clause in re.split(r"[。；;\n]", text or ""):
-                if _contains_token(clause, cert):
-                    evidence.append(clause.strip()[:60])
-                    break
-    # 规范同义词并去重
-    dedup = []
-    for c in found:
-        norm = _normalize_cert(c)
-        if norm not in dedup:
-            dedup.append(norm)
-    # "驾驶证" 与 "驾驶证(C1)" 只保留更具体的
-    if any("驾驶证(" in d for d in dedup):
-        dedup = [d for d in dedup if d != "驾驶证"]
-    return dedup, evidence
-
-
-def _extract_age_range(text: str) -> tuple[int, int, list[str]]:
-    t = text or ""
-    m = re.search(AGE_PATTERNS[1], t) or re.search(AGE_PATTERNS[2], t)
-    if m:
-        return int(m.group(1)), int(m.group(2)), [m.group(0)]
-    m = re.search(AGE_PATTERNS[0], t) or re.search(AGE_PATTERNS[3], t) or re.search(AGE_PATTERNS[4], t)
-    if m:
-        return 0, int(m.group(1)), [m.group(0)]
-    return 0, 0, []
 
 
 def _extract_salary(text: str) -> tuple[str, list[str]]:

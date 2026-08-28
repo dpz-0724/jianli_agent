@@ -209,12 +209,18 @@ def api_start(job_id: int, payload: dict = Body(default={})):
     plan = SearchPlan(query=query, max_pages=max_pages, max_count=target, browser_mode="managed")
     run_id = service.create_sourcing_run(job_id, plan)
     state.run_job[run_id] = job_id
+    # 源头筛选条件：城市取 JD 第一个目标城市，学历/经验直接映射到智联筛选器
+    filters = {
+        "city": (analysis.locations[0] if analysis.locations else ""),
+        "min_education": analysis.min_education or "",
+        "min_experience_years": analysis.min_experience_years or 0,
+    }
     state.update(job_id, status="RUNNING", message="正在启动…", progress=2, found=0,
                  page=0, target=target, max_pages=max_pages, need_login=False,
                  error="", finished=False, stats={"pass": 0, "review": 0, "conflict": 0})
     worker.submit("SEARCH", {
         "run_id": run_id, "query": query, "max_pages": max_pages,
-        "max_count": target, "start_page": 1,
+        "max_count": target, "start_page": 1, "filters": filters,
     })
     return {"ok": True, "run_id": run_id, "query": query, "max_pages": max_pages, "target": target}
 

@@ -297,6 +297,7 @@ class BrowserWorker:
                 control=lambda stage, page_no, count: self._control(
                     bot, command.request_id, run_id, stage, page_no, count
                 ),
+                filters=payload.get("filters") or None,
             )
             self._stop_trace(bot)
             self._emit(

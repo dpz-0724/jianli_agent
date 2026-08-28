@@ -71,6 +71,9 @@ class RecruitmentService:
             payload["preferred_skills"] = tuple(payload.get("preferred_skills") or ())
             payload["locations"] = tuple(payload.get("locations") or ())
             payload["title_terms"] = tuple(payload.get("title_terms") or ())
+            payload["certificates"] = tuple(payload.get("certificates") or ())
+            payload["age_min"] = int(payload.get("age_min") or 0)
+            payload["age_max"] = int(payload.get("age_max") or 0)
             return RequirementProfile(**payload)
         return build_requirement_profile(keyword=job.get("keyword", ""), jd=job.get("jd", ""))
 

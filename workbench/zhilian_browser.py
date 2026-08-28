@@ -153,6 +153,91 @@ class ProductCandidateSearcher(CandidateSearcher):
         self.page.screenshot(path=str(target), full_page=False)
         return str(target)
 
+    # ---- 搜索源头筛选（城市/学历/经验），大幅提升筛选质量 ----
+
+    def _click_filter_option(self, label: str, option: str) -> bool:
+        """在筛选行(按 label 定位)里点击指定选项文本。"""
+        try:
+            return bool(self.page.evaluate(
+                """([label, option]) => {
+                  const labels = Array.from(document.querySelectorAll('.search-label-wrapper-new__label'));
+                  const lbl = labels.find(e => (e.innerText||'').trim().startsWith(label));
+                  if (!lbl) return false;
+                  let container = lbl.parentElement;
+                  for (let i = 0; i < 5 && container; i++) {
+                    const opts = Array.from(container.querySelectorAll('span,div,a,li'))
+                      .filter(e => e.offsetParent && (e.innerText||'').trim() === option && e.children.length === 0);
+                    if (opts.length) { opts[0].click(); return true; }
+                    container = container.parentElement;
+                  }
+                  return false;
+                }""", [label, option]))
+        except Exception:
+            return False
+
+    def set_city(self, city: str) -> bool:
+        """把搜索的期望工作地切换到目标城市（取消默认城市，只保留目标）。"""
+        city = (city or "").strip()
+        if not city:
+            return False
+        try:
+            btn = self.page.query_selector(".keyword-panel__city") or self.page.query_selector(".keyword-panel-city")
+            if not btn:
+                return False
+            btn.click()
+            self.page.wait_for_timeout(1300)
+            if not self.page.query_selector("text=请选择人才期望城市"):
+                return False
+            self.page.evaluate(
+                """(city) => {
+                  const els = Array.from(document.querySelectorAll('div,span,li,a,p'))
+                    .filter(e=>e.offsetParent && (e.textContent||'').trim()===city);
+                  if(els.length){ els[els.length-1].click(); }
+                }""", city)
+            self.page.wait_for_timeout(700)
+            # 取消已选里的其它城市标签
+            self.page.evaluate(
+                """(city) => {
+                  const tags = Array.from(document.querySelectorAll('[class*=select],[class*=tag],[class*=chosen],[class*=check]'));
+                  for(const t of tags){
+                    const txt=(t.innerText||'').trim();
+                    if(txt && txt!==city && txt.length<=6 && /[一-龥]/.test(txt)){
+                      const x = t.querySelector('[class*=close],[class*=del],i,svg');
+                      if(x){ x.click(); }
+                    }
+                  }
+                }""", city)
+            self.page.wait_for_timeout(400)
+            self.page.evaluate(
+                """() => {
+                  const btns = Array.from(document.querySelectorAll('button,div,span,a'))
+                    .filter(e=>e.offsetParent && /^确定/.test((e.innerText||'').trim()) && (e.innerText||'').trim().length<=8);
+                  if(btns.length){ btns[btns.length-1].click(); }
+                }""")
+            self.page.wait_for_timeout(1500)
+            return True
+        except Exception:
+            return False
+
+    def apply_search_filters(self, *, city: str = "", min_education: str = "", min_experience_years: int = 0) -> dict:
+        """按画像在搜索源头设置筛选条件。返回实际应用的项（供进度提示）。年龄走引擎精确判定，不在此粗筛。"""
+        applied: dict[str, str] = {}
+        if city:
+            if self.set_city(city):
+                applied["city"] = city
+        edu_map = {"大专": "大专及以上", "专科": "大专及以上", "本科": "本科及以上",
+                   "硕士": "硕士及以上", "研究生": "硕士及以上", "博士": "硕士及以上"}
+        edu_opt = edu_map.get((min_education or "").strip())
+        if edu_opt and self._click_filter_option("学历要求", edu_opt):
+            applied["education"] = edu_opt
+            self.page.wait_for_timeout(1500)
+        if min_experience_years and min_experience_years > 0:
+            exp_opt = "1-3年" if min_experience_years <= 3 else ("3-5年" if min_experience_years <= 5 else "5-10年")
+            if self._click_filter_option("经验要求", exp_opt):
+                applied["experience"] = exp_opt
+                self.page.wait_for_timeout(1500)
+        return applied
+
     def search_and_scrape_controlled(
         self,
         keyword: str,
@@ -164,6 +249,7 @@ class ProductCandidateSearcher(CandidateSearcher):
         on_checkpoint: Callable[[int, int], None] | None = None,
         on_page: Callable[[int, list], None] | None = None,
         control: Callable[[str, int, int], None] | None = None,
+        filters: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         def check(stage: str, page_no: int, count: int) -> None:
             if control:
@@ -171,6 +257,17 @@ class ProductCandidateSearcher(CandidateSearcher):
 
         check("before_search", 0, 0)
         self.do_search(keyword)
+        # 源头筛选：设置城市/学历/经验，让搜索结果本身就匹配画像
+        if filters:
+            try:
+                self.apply_search_filters(
+                    city=str(filters.get("city", "") or ""),
+                    min_education=str(filters.get("min_education", "") or ""),
+                    min_experience_years=int(filters.get("min_experience_years", 0) or 0),
+                )
+                self.page.wait_for_timeout(2000)
+            except Exception:
+                pass
         candidates: list[dict[str, Any]] = []
         seen: set[str] = set()
 

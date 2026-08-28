@@ -134,6 +134,51 @@ def _extract_locations(text: str) -> tuple[list[str], list[str]]:
     return found, found.copy()
 
 
+# 证书词典（招聘高频）——作为岗位硬性/优先筛选条件
+CERT_KEYWORDS = [
+    "驾驶证", "驾照", "c1", "c2", "普通话", "教师资格证", "会计证", "初级会计", "中级会计",
+    "cpa", "注册会计师", "acca", "英语四级", "英语六级", "cet-4", "cet-6", "四级", "六级",
+    "专四", "专八", "计算机二级", "护士证", "执业药师", "电工证", "焊工证", "叉车证", "健康证",
+    "育婴师", "保育员", "一级建造师", "一建", "二级建造师", "二建", "造价工程师", "造价师",
+    "消防工程师", "监理工程师", "安全工程师", "法律职业资格", "法考", "证券从业", "基金从业",
+    "银行从业", "期货从业", "frm", "cfa", "pmp", "软考", "人力资源管理师", "导游证",
+    "营养师", "心理咨询师", "社工证",
+]
+_CERT_NORM = {
+    "c1": "驾驶证(C1)", "c2": "驾驶证(C2)", "驾照": "驾驶证", "四级": "英语四级",
+    "六级": "英语六级", "初级会计": "会计证(初级)", "中级会计": "会计证(中级)",
+}
+
+
+def _extract_certificates(text: str) -> tuple[list[str], list[str]]:
+    found, evidence = [], []
+    low = (text or "").lower()
+    for cert in CERT_KEYWORDS:
+        if _contains_token(low, cert):
+            norm = _CERT_NORM.get(cert, cert)
+            if norm not in found:
+                found.append(norm)
+                for clause in re.split(r"[。；;\n]", text or ""):
+                    if _contains_token(clause, cert):
+                        evidence.append(clause.strip()[:60])
+                        break
+    if any("驾驶证(" in d for d in found):
+        found = [d for d in found if d != "驾驶证"]
+    return found, evidence
+
+
+def _extract_age_range(text: str) -> tuple[int, int, list[str]]:
+    t = text or ""
+    m = re.search(r"年龄\s*(\d{2})\s*[-—~至到]\s*(\d{2})\s*岁", t) or re.search(r"(\d{2})\s*[-—~至到]\s*(\d{2})\s*岁", t)
+    if m:
+        return int(m.group(1)), int(m.group(2)), [m.group(0)]
+    m = (re.search(r"(\d{2})\s*岁\s*(?:以下|以内|之内)", t) or re.search(r"不超过\s*(\d{2})\s*岁", t)
+         or re.search(r"(\d{2})\s*岁以下", t))
+    if m:
+        return 0, int(m.group(1)), [m.group(0)]
+    return 0, 0, []
+
+
 def _extract_skills_by_context(jd: str) -> tuple[list[str], list[str], dict[str, list[str]]]:
     required: list[str] = []
     preferred: list[str] = []
@@ -185,10 +230,15 @@ def build_requirement_profile(
     parsed_locations, location_evidence = _extract_locations(jd)
     confirmed_locations = explicit_locations or parsed_locations
 
+    certificates, cert_evidence = _extract_certificates(jd)
+    age_min, age_max, age_evidence = _extract_age_range(jd)
+
     source_evidence = {
         "education": education_evidence,
         "experience": experience_evidence,
         "locations": location_evidence,
+        "certificates": cert_evidence,
+        "age": age_evidence,
     }
     for skill, clauses in skill_evidence.items():
         source_evidence[f"skill:{skill}"] = clauses
@@ -201,6 +251,9 @@ def build_requirement_profile(
         min_experience_years=confirmed_years,
         locations=tuple(dict.fromkeys(confirmed_locations)),
         title_terms=tuple(manual_terms[:8]),
+        age_min=age_min,
+        age_max=age_max,
+        certificates=tuple(dict.fromkeys(certificates)),
         source_evidence=source_evidence,
         parser_version=PARSER_VERSION,
     )
@@ -369,15 +422,71 @@ def assess_candidate(candidate: dict, profile: RequirementProfile) -> CandidateA
     title = str(sanitized.get("title", "") or "")
     title_hits = [term for term in profile.title_terms if _contains_token(title, term)]
 
+    # 年龄约束（客户在 JD 显式写明时才生效；不参与加权分，作为硬性/复核条件）
+    age_state = "not_applicable"
+    candidate_age = 0
+    if profile.age_max or profile.age_min:
+        try:
+            candidate_age = int(sanitized.get("age") or 0)
+        except (TypeError, ValueError):
+            candidate_age = 0
+        lo = profile.age_min or 16
+        hi = profile.age_max or 65
+        if candidate_age <= 0:
+            reviews.append("年龄信息缺失，需人工核验")
+            age_state = "unknown"
+        elif candidate_age > hi:
+            conflicts.append(f"年龄 {candidate_age} 岁超出岗位要求（要求 ≤{hi} 岁）")
+            age_state = "conflict"
+        elif candidate_age < lo:
+            conflicts.append(f"年龄 {candidate_age} 岁低于岗位要求（要求 ≥{lo} 岁）")
+            age_state = "conflict"
+        else:
+            positives.append(f"年龄 {candidate_age} 岁符合要求")
+            age_state = "pass"
+
+    # 证书约束（招聘方明确要求持证时：简历可确认则加分，未提及则复核）
+    matched_certs: list[str] = []
+    missing_certs: list[str] = []
+    if profile.certificates:
+        cand_cert_text = " ".join([
+            str(sanitized.get("certificates", "") or ""),
+            str(sanitized.get("skills", "") or ""),
+            str(sanitized.get("text", "") or ""),
+        ]).lower()
+        for cert in profile.certificates:
+            base = re.sub(r"\(.*?\)", "", cert).strip()
+            variants = {cert.lower(), base.lower()}
+            if base in ("驾驶证",): variants |= {"驾照", "c1", "c2"}
+            if base in ("英语四级",): variants |= {"四级", "cet-4"}
+            if base in ("英语六级",): variants |= {"六级", "cet-6"}
+            if any(v and v in cand_cert_text for v in variants):
+                matched_certs.append(cert)
+            else:
+                missing_certs.append(cert)
+        if matched_certs:
+            positives.append("持有证书：" + "、".join(matched_certs))
+        # 缺失证书不压状态：搜索卡片阶段无法核验证书，需看完整简历；只在持有时加分
+
     weighted: list[tuple[float, float]] = []
     if required_coverage is not None:
-        weighted.append((required_coverage, 0.60))
+        weighted.append((required_coverage, 0.50))
     if profile.preferred_skills:
-        weighted.append((len(matched_preferred) / len(profile.preferred_skills), 0.20))
+        weighted.append((len(matched_preferred) / len(profile.preferred_skills), 0.18))
     if profile.title_terms:
-        weighted.append((len(title_hits) / len(profile.title_terms), 0.15))
+        weighted.append((len(title_hits) / len(profile.title_terms), 0.12))
+    if profile.certificates:
+        weighted.append((len(matched_certs) / len(profile.certificates), 0.10))
     if location_match is not None:
         weighted.append((1.0 if location_match else 0.0, 0.05))
+
+    # 区分度：教育质量与经验丰富度（满足门槛后，越高越好）
+    cand_edu_level = _education_level(str(sanitized.get("education", "")))
+    if cand_edu_level is not None:
+        weighted.append((min(1.0, cand_edu_level / 5.0), 0.10))  # 大专3/本科4/硕士5/博士6
+    if experience_range is not None:
+        cand_years = experience_range.exact or experience_range.minimum or 0
+        weighted.append((min(1.0, cand_years / 8.0), 0.06))
 
     if weighted:
         numerator = sum(value * weight for value, weight in weighted)
@@ -402,6 +511,10 @@ def assess_candidate(candidate: dict, profile: RequirementProfile) -> CandidateA
         "candidate_education": sanitized.get("education", ""),
         "candidate_experience": sanitized.get("experience", ""),
         "experience_state": experience_state,
+        "age_state": age_state,
+        "candidate_age": candidate_age,
+        "matched_certificates": matched_certs,
+        "missing_certificates": missing_certs,
         "experience_range": (
             {
                 "minimum": experience_range.minimum,

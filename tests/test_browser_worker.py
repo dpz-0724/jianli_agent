@@ -32,6 +32,7 @@ class FakeBot:
         on_checkpoint,
         control,
         on_page=None,
+        filters=None,
     ):
         self.thread_id = threading.get_ident()
         result = []
