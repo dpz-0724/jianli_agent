@@ -229,6 +229,7 @@
   .stage-btn:hover{border-color:var(--pri);color:var(--pri)}
   .stage-btn.cur{background:var(--pri);color:#fff;border-color:var(--pri)}
   .note-area{width:100%;border:1px solid var(--line2);border-radius:8px;padding:10px 12px;font-size:13px;font-family:inherit;min-height:70px;resize:vertical;outline:none}
+  .greet-box{background:#f7f9ff;border:1px solid var(--line);border-radius:8px;padding:12px 14px;font-size:13.5px;line-height:1.7;color:#3a4152}
   .note-area:focus{border-color:var(--pri)}
   .timeline{font-size:12px;color:var(--mut);line-height:1.9}
   .timeline .ti{padding:5px 0;border-left:2px solid var(--line);padding-left:12px;position:relative}
@@ -837,6 +838,10 @@ async function openDrawer(id){
       <div class="dsec"><h4>招聘流转</h4><div class="stage-btns">
         ${['TO_REVIEW','TALENT_POOL','TO_CONTACT','CONTACTED','INTERVIEW','REJECTED'].map(s=>`<button class="stage-btn ${c.stage===s?'cur':''}" onclick="drawerStage(${c.id},'${s}')">${STAGE_CN[s]}</button>`).join('')}
       </div></div>
+      ${c.greeting?`<div class="dsec"><h4>打招呼话术 <span class="mut" style="font-weight:400;font-size:11px">复制后到智联发送</span></h4>
+        <div class="greet-box" id="greetBox">${c.greeting}</div>
+        <button class="btn btn-pri btn-sm" style="margin-top:9px" onclick="copyGreeting()">复制话术</button>
+      </div>`:''}
       <div class="dsec"><h4>备注与跟进</h4>
         <textarea class="note-area" id="dNote" placeholder="记录沟通要点、面试反馈等…">${c.note||''}</textarea>
         <div style="display:flex;gap:9px;align-items:center;margin-top:9px">
@@ -855,6 +860,13 @@ async function saveNote(id){
   const follow=$('dFollow')?.value||'';
   await api(`/api/candidates/${id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({note,next_follow_up_at:follow})});
   toast('已保存'); const c=candidates.find(x=>x.id===id); if(c)c.note=note;
+}
+function copyGreeting(){
+  const t=$('greetBox')?.innerText||'';
+  if(!t)return;
+  navigator.clipboard.writeText(t).then(()=>toast('话术已复制')).catch(()=>{ 
+    const ta=document.createElement('textarea'); ta.value=t; document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); document.body.removeChild(ta); toast('话术已复制'); });
 }
 
 // ================= create =================

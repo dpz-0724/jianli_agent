@@ -361,6 +361,15 @@ def api_candidate_detail(job_candidate_id: int):
             item["parsed_resume"] = parse_resume(item["full_text"])
         except Exception:
             item["parsed_resume"] = None
+    # 个性化打招呼话术（基于简历+岗位，供HR复制到智联）
+    try:
+        from workbench.greeting import generate_greeting
+        profile = service.load_profile(r.get("job_id"))
+        item["greeting"] = generate_greeting(
+            item, job_title=(db.get_job(r.get("job_id")) or {}).get("title", ""),
+            profile=profile, parsed_resume=item.get("parsed_resume"))
+    except Exception:
+        item["greeting"] = ""
     return {"ok": True, "candidate": item}
 
 

@@ -18,6 +18,13 @@ _DURATION_RE = re.compile(r"\((?:(\d+)年)?\s*(?:(\d+)个?月)?\)")
 _SALARY_RE = re.compile(r"^\d+(?:\.\d+)?\s*(?:万|千|元)\s*/?\s*月?$")
 _NOISE = {"展开", "收起", "询问他", "询问她", "最近一份工作经历可能未更新", "在职，看看机会", "离职，正在找工作"}
 
+# 公司性质/规模/融资标签——属于公司元信息，不属于职位
+_COMPANY_TAG_RE = re.compile(
+    r"(国有企业|民营企业|外资|上市公司|股份制|合资|国企|外企|私企|事业单位|政府机关|"
+    r"专精特新|高新技术|独角兽|不需要融资|已上市|未融资|[A-D]轮|天使轮|战略投资|"
+    r"\d+\s*[-~—]\s*\d+\s*人|\d+\s*人以上|\d+\s*人以下|少于\s*\d+\s*人)"
+)
+
 
 def _is_period(line: str) -> bool:
     return bool(_PERIOD_RE.search(line))
@@ -76,9 +83,10 @@ def _parse_work(lines: list[str]) -> list[dict]:
         body = [l for l in lines[p + 1:nxt]]
         salary = ""
         header = [h for h in header if not _is_salary(h) or (salary := h)]
-        # header 里第一条是公司，其余是职位/标签
-        company = header[0] if header else ""
-        title = " ".join(header[1:3]) if len(header) > 1 else ""
+        # 剥离公司性质/规模/融资标签：第一条非标签行是公司，其后第一条非标签行是职位
+        clean = [h for h in header if not _COMPANY_TAG_RE.search(h)]
+        company = clean[0] if clean else (header[0] if header else "")
+        title = clean[1] if len(clean) > 1 else ""
         # body 里短行是标签，长行/编号行是职责
         tags = [b for b in body if not _is_desc(b)][:8]
         desc = " ".join(b for b in body if _is_desc(b))
