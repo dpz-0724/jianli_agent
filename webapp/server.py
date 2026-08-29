@@ -434,6 +434,118 @@ def api_export(job_id: int):
                     headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(fname)}"})
 
 
+def _esc(s) -> str:
+    import html
+    return html.escape(str(s if s is not None else ""))
+
+
+@app.get("/api/jobs/{job_id}/report")
+def api_report(job_id: int, top: int = 20):
+    """生成给用人经理的推荐报告（可打印 HTML）：按匹配分排序的匹配候选人短名单。"""
+    job = db.get_job(job_id)
+    if not job:
+        return JSONResponse({"ok": False, "error": "岗位不存在"}, status_code=404)
+    rows = [r for r in db.list_job_candidates(job_id, limit=100000)
+            if r.get("assessment_status") == "PASS"]
+    rows.sort(key=lambda r: -(r.get("fit_score") or 0))
+    rows = rows[:max(1, min(top, 100))]
+    profile = service.load_profile(job_id)
+    from workbench.resume_parser import parse_resume
+    budget = ""
+    if profile and (profile.salary_min or profile.salary_max):
+        budget = f"{profile.salary_min}-{profile.salary_max}K"
+    sal_cn = {"fit": "在预算内", "below": "低于预算", "over": "略超预算", "way_over": "明显高于预算"}
+
+    cards = []
+    for i, r in enumerate(rows, 1):
+        ev = r.get("evidence", {}) or {}
+        reasons = "".join(f"<li>{_esc(x)}</li>" for x in (r.get("reasons") or [])[:5])
+        # 稳定性
+        stab = ""
+        gaps = ev.get("max_gap_months", 0)
+        avg_t = ev.get("avg_tenure_months", 0)
+        if gaps >= 12:
+            stab = f"<span class='warn'>稳定性：最长空档约{gaps}个月</span>"
+        elif avg_t and avg_t < 14:
+            stab = f"<span class='warn'>稳定性：平均任期约{avg_t}个月</span>"
+        elif avg_t and avg_t >= 36:
+            stab = f"<span class='ok'>稳定性：平均任期约{avg_t}个月</span>"
+        # 简历亮点：最近一份工作 + 求职期望（从完整简历解析）
+        work_html = ""
+        if r.get("full_text"):
+            try:
+                pr = parse_resume(r["full_text"])
+                if pr.get("work"):
+                    w0 = pr["work"][0]
+                    line = " · ".join(x for x in [w0.get("company"), w0.get("title"), w0.get("period")] if x)
+                    desc = (w0.get("description") or "")[:120]
+                    work_html = (f"<div class='work'><b>最近工作：</b>{_esc(line)}"
+                                 + (f"<div class='wdesc'>{_esc(desc)}…</div>" if desc else "") + "</div>")
+                elif pr.get("expectation") and pr["expectation"].get("title"):
+                    ex = pr["expectation"]
+                    work_html = f"<div class='work'><b>求职意向：</b>{_esc(ex.get('title',''))} · {_esc(ex.get('location',''))}</div>"
+            except Exception:
+                work_html = ""
+        sal_state = ev.get("salary_state", "")
+        sal_html = ""
+        if r.get("expected_salary"):
+            cls = "ok" if sal_state in ("fit", "below") else ("warn" if sal_state in ("over", "way_over") else "")
+            txt = f"{_esc(r['expected_salary'])}" + (f"（{sal_cn.get(sal_state, '')}）" if sal_cn.get(sal_state) else "")
+            sal_html = f"<span class='{cls}'>{txt}</span>"
+        cards.append(f"""
+        <div class="cand">
+          <div class="cand-h">
+            <span class="rank">{i}</span>
+            <span class="nm">{_esc(r.get('name'))}</span>
+            <span class="ti">{_esc(r.get('title'))}</span>
+            <span class="score">{round(float(r.get('fit_score') or 0),1)}</span>
+          </div>
+          <div class="meta">{_esc(r.get('location'))} · {_esc(r.get('education'))} · {_esc(r.get('experience'))} · {_esc(r.get('age') or '')}岁 · 期望 {sal_html}</div>
+          {work_html}
+          {f"<div class='stab'>{stab}</div>" if stab else ""}
+          <ul class="reasons">{reasons}</ul>
+        </div>""")
+
+    today = time.strftime("%Y-%m-%d")
+    total = len(db.list_job_candidates(job_id, limit=100000))
+    html_doc = f"""<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8">
+<title>推荐报告 · {_esc(job['title'])}</title><style>
+  *{{margin:0;padding:0;box-sizing:border-box}}
+  body{{font-family:'Microsoft YaHei',system-ui,sans-serif;background:#f3f5f9;color:#1c2333;padding:32px;font-size:14px}}
+  .page{{max-width:820px;margin:0 auto;background:#fff;padding:40px 44px;box-shadow:0 2px 16px rgba(0,0,0,.08)}}
+  h1{{font-size:22px;font-weight:700}}
+  .sub{{color:#8a91a6;font-size:13px;margin-top:8px;padding-bottom:20px;border-bottom:2px solid #1c2333}}
+  .sumrow{{display:flex;gap:24px;margin:18px 0;font-size:13px;color:#5a6172}}
+  .sumrow b{{color:#2f6bff}}
+  .cand{{border:1px solid #e8eaf0;border-radius:8px;padding:16px 18px;margin-bottom:14px;page-break-inside:avoid}}
+  .cand-h{{display:flex;align-items:baseline;gap:10px}}
+  .rank{{background:#2f6bff;color:#fff;width:22px;height:22px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:700}}
+  .nm{{font-size:16px;font-weight:700}}
+  .ti{{color:#5a6172;font-size:13px}}
+  .score{{margin-left:auto;font-size:20px;font-weight:700;color:#1a9e73;font-variant-numeric:tabular-nums}}
+  .meta{{color:#5a6172;font-size:12.5px;margin:8px 0}}
+  .work{{background:#f7f9ff;border-radius:6px;padding:9px 12px;font-size:12.5px;color:#3a4152;margin-bottom:8px;line-height:1.6}}
+  .work b{{color:#2f6bff;font-weight:600}}
+  .wdesc{{color:#5a6172;margin-top:4px;font-size:12px}}
+  .stab{{font-size:12px;margin-bottom:6px}}
+  .reasons{{margin:6px 0 0 18px;color:#3a4152;font-size:13px;line-height:1.7}}
+  .ok{{color:#1a9e73;font-weight:600}} .warn{{color:#c27d1a;font-weight:600}}
+  .footer{{margin-top:28px;padding-top:14px;border-top:1px solid #e8eaf0;color:#8a91a6;font-size:11px;text-align:center}}
+  @media print{{body{{background:#fff;padding:0}}.page{{box-shadow:none;max-width:100%}}}}
+</style></head><body><div class="page">
+  <h1>候选人推荐报告 · {_esc(job['title'])}</h1>
+  <div class="sub">简历智能体筛选 · 生成于 {today}</div>
+  <div class="sumrow">
+    <span>候选池 <b>{total}</b> 人</span><span>推荐 <b>{len(rows)}</b> 人</span>
+    {f"<span>薪资预算 <b>{_esc(budget)}</b></span>" if budget else ""}
+    {f"<span>最低学历 <b>{_esc(profile.min_education)}</b></span>" if profile and profile.min_education else ""}
+  </div>
+  {''.join(cards) if cards else '<p style="color:#8a91a6;padding:30px 0;text-align:center">暂无匹配候选人</p>'}
+  <div class="footer">由 简历智能体 自动筛选生成 · 评分与理由基于候选人简历与岗位用人标准</div>
+</div></body></html>"""
+    return Response(content=html_doc.encode("utf-8"), media_type="text/html; charset=utf-8")
+
+
 @app.get("/api/preview.png")
 def api_preview():
     if PREVIEW_PATH.is_file():

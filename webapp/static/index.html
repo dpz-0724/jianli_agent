@@ -434,6 +434,7 @@ function renderJobView(){
           <div class="sub">创建于 ${String(j.created_at||'').slice(0,10)} · 检索关键词：${p.keyword||j.keyword||j.title}</div>
         </div>
         <div class="acts">
+          <button class="btn btn-ghost" onclick="openReport()">⎙ 推荐报告</button>
           <button class="btn btn-ghost" onclick="exportJob()">⭳ 导出 Excel</button>
           ${activeRun
             ? '<button class="btn btn-danger" onclick="doStop()">停止本轮</button>'
@@ -722,6 +723,7 @@ async function showLogin(){ await api(`/api/jobs/${curJobId}/login_shown`,{metho
 
 // ================= export =================
 function exportJob(){ if(!curJobId)return; window.open(`/api/jobs/${curJobId}/export`,'_blank'); toast('正在导出 Excel…'); }
+function openReport(){ if(!curJobId)return; window.open(`/api/jobs/${curJobId}/report?top=20`,'_blank'); }
 
 // ================= detail drawer =================
 // 把简历全文按段落标题切成结构化块
