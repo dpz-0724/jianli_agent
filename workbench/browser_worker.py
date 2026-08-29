@@ -287,6 +287,19 @@ class BrowserWorker:
                 )
 
             fetch_detail = bool(payload.get("fetch_detail", False))
+            # 深读额度是稀缺的：评分函数让每页先按我方匹配分排序，深读优先给高分者
+            score_fn = None
+            if fetch_detail:
+                try:
+                    from .database import WorkbenchDB
+                    from .service import RecruitmentService
+                    from .evaluation import assess_candidate
+                    _db = WorkbenchDB()
+                    _profile = RecruitmentService(_db).load_profile(int(payload.get("job_id") or 0))
+                    if _profile is not None:
+                        score_fn = lambda c: assess_candidate(c, _profile).fit_score
+                except Exception:
+                    score_fn = None
             candidates = bot.search_and_scrape_controlled(
                 query,
                 max_pages=max_pages,
@@ -301,6 +314,7 @@ class BrowserWorker:
                 filters=payload.get("filters") or None,
                 fetch_detail=fetch_detail,
                 max_detail=int(payload.get("max_detail", 25) or 25),
+                score_fn=score_fn,
             )
             self._stop_trace(bot)
             quota_hit = bool(getattr(bot, "_resume_quota_exhausted", False))

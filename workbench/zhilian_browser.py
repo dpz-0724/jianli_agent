@@ -347,6 +347,7 @@ class ProductCandidateSearcher(CandidateSearcher):
         filters: dict[str, Any] | None = None,
         fetch_detail: bool = False,
         max_detail: int = 25,
+        score_fn: Callable[[dict], float] | None = None,
     ) -> list[dict[str, Any]]:
         def check(stage: str, page_no: int, count: int) -> None:
             if control:
@@ -405,8 +406,15 @@ class ProductCandidateSearcher(CandidateSearcher):
                     break
             # 深度筛选：逐人打开简历弹窗抓全文（让智能体真正"看简历"）
             # 额度保护：查看完整简历消耗智联每日额度——一旦耗尽或达本轮上限即停，不浪费
+            # 稀缺额度优先给高分者：有评分函数时按我方匹配分降序深读，而非智联默认顺序
             if fetch_detail and page_new and not self._resume_quota_exhausted and detail_count < max_detail:
-                for cand, cidx in zip(page_new, page_idx):
+                ordered = list(zip(page_new, page_idx))
+                if score_fn:
+                    try:
+                        ordered.sort(key=lambda pair: -(score_fn(pair[0]) or 0))
+                    except Exception:
+                        pass
+                for cand, cidx in ordered:
                     if self._resume_quota_exhausted or detail_count >= max_detail:
                         break
                     check("before_detail", page_no, len(candidates))

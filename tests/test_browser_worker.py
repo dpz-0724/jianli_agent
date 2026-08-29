@@ -35,6 +35,7 @@ class FakeBot:
         filters=None,
         fetch_detail=False,
         max_detail=25,
+        score_fn=None,
     ):
         self.thread_id = threading.get_ident()
         result = []

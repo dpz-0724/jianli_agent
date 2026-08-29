@@ -227,6 +227,7 @@ def api_start(job_id: int, payload: dict = Body(default={})):
         "run_id": run_id, "query": query, "max_pages": max_pages,
         "max_count": target, "start_page": 1, "filters": filters,
         "fetch_detail": fetch_detail, "max_detail": max_detail,
+        "job_id": job_id,
     })
     return {"ok": True, "run_id": run_id, "query": query, "max_pages": max_pages, "target": target}
 
