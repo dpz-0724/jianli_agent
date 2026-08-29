@@ -18,10 +18,12 @@ _DURATION_RE = re.compile(r"\((?:(\d+)年)?\s*(?:(\d+)个?月)?\)")
 _SALARY_RE = re.compile(r"^\d+(?:\.\d+)?\s*(?:万|千|元)\s*/?\s*月?$")
 _NOISE = {"展开", "收起", "询问他", "询问她", "最近一份工作经历可能未更新", "在职，看看机会", "离职，正在找工作"}
 
-# 公司性质/规模/融资标签——属于公司元信息，不属于职位
+# 公司性质/规模/融资/荣誉标签——属于公司元信息，不属于职位
 _COMPANY_TAG_RE = re.compile(
     r"(国有企业|民营企业|外资|上市公司|股份制|合资|国企|外企|私企|事业单位|政府机关|"
-    r"专精特新|高新技术|独角兽|不需要融资|已上市|未融资|[A-D]轮|天使轮|战略投资|"
+    r"港澳台|专精特新|高新技术|独角兽|不需要融资|已上市|未融资|[A-D]轮|天使轮|战略投资|"
+    r"胡润|财富|\d+\s*强|中国\d+强|世界\d+强|排名|榜单|"
+    r"优势企业|示范企业|重点企业|知识产权|小巨人|瞪羚|制造冠军|"
     r"\d+\s*[-~—]\s*\d+\s*人|\d+\s*人以上|\d+\s*人以下|少于\s*\d+\s*人)"
 )
 
@@ -46,9 +48,15 @@ def _duration_months(line: str) -> int:
 
 
 def _is_desc(line: str) -> bool:
-    """职责描述类长行：编号开头、或含句号、或较长。"""
+    """职责描述类长行：编号开头、或含句号、或较长。时间行/薪资行不算。"""
     s = line.strip()
-    return bool(re.match(r"^\d+[.、]", s)) or "。" in s or len(s) > 30
+    if _is_period(s) or _is_salary(s):
+        return False
+    return bool(re.match(r"^\d+[.、](?!\d)", s)) or "。" in s or len(s) > 30
+
+
+# 空档/间隔行（"两份工作间有9个月空档期"等）——不是公司/职位
+_GAP_RE = re.compile(r"(空档|两份工作之间|两份工作间)")
 
 
 def _split_sections(lines: list[str]) -> dict[str, list[str]]:
@@ -83,8 +91,8 @@ def _parse_work(lines: list[str]) -> list[dict]:
         body = [l for l in lines[p + 1:nxt]]
         salary = ""
         header = [h for h in header if not _is_salary(h) or (salary := h)]
-        # 剥离公司性质/规模/融资标签：第一条非标签行是公司，其后第一条非标签行是职位
-        clean = [h for h in header if not _COMPANY_TAG_RE.search(h)]
+        # 剥离公司性质/规模/融资标签 + 空档间隔行：第一条非标签行是公司，其后第一条非标签行是职位
+        clean = [h for h in header if not _COMPANY_TAG_RE.search(h) and not _GAP_RE.search(h)]
         company = clean[0] if clean else (header[0] if header else "")
         title = clean[1] if len(clean) > 1 else ""
         # body 里短行是标签，长行/编号行是职责
