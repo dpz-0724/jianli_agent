@@ -165,6 +165,62 @@ class CandidateMixin:
                 result.append(item)
             return result
 
+    def pipeline_dashboard(self) -> dict[str, Any]:
+        """跨岗位工作台：漏斗统计 + 各岗位分布 + 该跟进的候选人。"""
+        with self.connect() as conn:
+            # 各招聘阶段数量（跨全部未归档岗位）
+            stage_rows = conn.execute(
+                """
+                SELECT jc.stage, COUNT(*) AS n
+                FROM job_candidates jc JOIN jobs j ON j.id=jc.job_id
+                WHERE j.status <> 'ARCHIVED'
+                GROUP BY jc.stage
+                """
+            ).fetchall()
+            stage_counts = {r["stage"]: r["n"] for r in stage_rows}
+            total = sum(stage_counts.values())
+
+            # 各岗位概览
+            job_rows = conn.execute(
+                """
+                SELECT j.id, j.title,
+                       COUNT(jc.id) AS cnt,
+                       SUM(CASE WHEN jc.stage='TO_CONTACT' THEN 1 ELSE 0 END) AS to_contact,
+                       SUM(CASE WHEN jc.stage='CONTACTED' THEN 1 ELSE 0 END) AS contacted,
+                       SUM(CASE WHEN jc.stage='INTERVIEW' THEN 1 ELSE 0 END) AS interview
+                FROM jobs j LEFT JOIN job_candidates jc ON jc.job_id=j.id
+                WHERE j.status <> 'ARCHIVED'
+                GROUP BY j.id, j.title
+                ORDER BY cnt DESC, j.id DESC LIMIT 12
+                """
+            ).fetchall()
+
+            # 该跟进的候选人：待联系 / 已联系 / 约面（按最近更新排序）
+            follow_rows = conn.execute(
+                """
+                SELECT jc.id AS job_candidate_id, jc.job_id, jc.stage, jc.note, jc.updated_at,
+                       j.title AS job_title,
+                       c.name, c.title, c.location, c.education, c.age, c.expected_salary, c.activity,
+                       a.status AS assessment_status, a.fit_score
+                FROM job_candidates jc
+                JOIN jobs j ON j.id=jc.job_id
+                JOIN candidates c ON c.id=jc.candidate_id
+                LEFT JOIN assessments a ON a.id=(
+                    SELECT a2.id FROM assessments a2 WHERE a2.job_candidate_id=jc.id ORDER BY a2.id DESC LIMIT 1
+                )
+                WHERE j.status <> 'ARCHIVED' AND jc.stage IN ('TO_CONTACT','CONTACTED','INTERVIEW')
+                ORDER BY CASE jc.stage WHEN 'INTERVIEW' THEN 0 WHEN 'TO_CONTACT' THEN 1 ELSE 2 END,
+                         jc.updated_at DESC LIMIT 50
+                """
+            ).fetchall()
+
+        return {
+            "stage_counts": stage_counts,
+            "total": total,
+            "jobs": [dict(r) for r in job_rows],
+            "follow_ups": [dict(r) for r in follow_rows],
+        }
+
     def get_job_candidate(self, job_candidate_id: int) -> dict[str, Any] | None:
         with self.connect() as conn:
             row = conn.execute(

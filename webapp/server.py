@@ -341,6 +341,11 @@ def api_candidates(job_id: int, status: str = "ALL", stage: str = "ALL", search:
     return {"ok": True, "candidates": out, "total": len(rows)}
 
 
+@app.get("/api/dashboard")
+def api_dashboard():
+    return {"ok": True, **db.pipeline_dashboard()}
+
+
 @app.get("/api/candidates/{job_candidate_id}")
 def api_candidate_detail(job_candidate_id: int):
     r = db.get_job_candidate(job_candidate_id)
