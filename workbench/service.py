@@ -74,6 +74,8 @@ class RecruitmentService:
             payload["certificates"] = tuple(payload.get("certificates") or ())
             payload["age_min"] = int(payload.get("age_min") or 0)
             payload["age_max"] = int(payload.get("age_max") or 0)
+            payload["salary_min"] = int(payload.get("salary_min") or 0)
+            payload["salary_max"] = int(payload.get("salary_max") or 0)
             return RequirementProfile(**payload)
         return build_requirement_profile(keyword=job.get("keyword", ""), jd=job.get("jd", ""))
 
@@ -148,6 +150,7 @@ class RecruitmentService:
 
     def update_job_profile(self, job_id: int, *, keyword=None, min_education=None,
                            min_experience_years=None, age_min=None, age_max=None,
+                           salary_min=None, salary_max=None,
                            locations=None, required_skills=None, preferred_skills=None,
                            certificates=None, confirmed_by: str = "web") -> RequirementProfile:
         """用可编辑字段覆盖画像并重算全部候选人。"""
@@ -162,6 +165,8 @@ class RecruitmentService:
             title_terms=cur.title_terms,
             age_min=(int(age_min) if age_min is not None else cur.age_min),
             age_max=(int(age_max) if age_max is not None else cur.age_max),
+            salary_min=(int(salary_min) if salary_min is not None else cur.salary_min),
+            salary_max=(int(salary_max) if salary_max is not None else cur.salary_max),
             certificates=tuple(certificates) if certificates is not None else cur.certificates,
             source_evidence=cur.source_evidence,
             parser_version=cur.parser_version,

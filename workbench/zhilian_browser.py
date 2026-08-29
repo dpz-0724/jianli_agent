@@ -238,6 +238,73 @@ class ProductCandidateSearcher(CandidateSearcher):
                 self.page.wait_for_timeout(1500)
         return applied
 
+    # ---- 完整简历详情抓取（"会看简历"的核心）----
+
+    def _open_resume_modal(self, card, timeout: int = 6000) -> bool:
+        """点击候选人卡片打开简历弹窗。返回是否成功打开。"""
+        try:
+            target = card.query_selector(".talent-basic-info__name") or card
+            target.click()
+            self.page.wait_for_selector(".resume-content-new, .resume-detail, .new-resume-detail",
+                                        timeout=timeout)
+            return True
+        except Exception:
+            return False
+
+    def _scrape_open_resume(self) -> str:
+        """抓取当前打开的简历弹窗全文（滚动触发懒加载后取全文）。"""
+        try:
+            # 滚动简历容器，触发懒加载全部内容
+            self.page.evaluate(
+                """() => {
+                  const c = document.querySelector('.resume-detail, .new-resume-detail, .km-modal__body');
+                  if (c) { c.scrollTop = c.scrollHeight; }
+                }""")
+            self.page.wait_for_timeout(500)
+            return self.page.evaluate(
+                """() => {
+                  const el = document.querySelector('.resume-content-new')
+                    || document.querySelector('.resume-detail')
+                    || document.querySelector('.km-modal__body');
+                  return el ? (el.innerText || '') : '';
+                }""") or ""
+        except Exception:
+            return ""
+
+    def _close_resume_modal(self) -> None:
+        """关闭简历弹窗（ESC 优先，兜底点关闭按钮），保证回到列表页。"""
+        try:
+            self.page.keyboard.press("Escape")
+            self.page.wait_for_timeout(600)
+        except Exception:
+            pass
+        try:
+            if self.page.query_selector(".km-modal--open"):
+                x = (self.page.query_selector(".km-modal__close")
+                     or self.page.query_selector(".km-modal--open [class*=close]")
+                     or self.page.query_selector(".new-shortcut-resume [class*=close]"))
+                if x:
+                    x.click()
+                    self.page.wait_for_timeout(500)
+        except Exception:
+            pass
+
+    def scrape_candidate_detail(self, card) -> str:
+        """对单张卡片：打开简历弹窗→抓全文→关闭。失败返回空串（不影响卡片数据）。"""
+        if not self._open_resume_modal(card):
+            self._close_resume_modal()
+            return ""
+        try:
+            text = self._scrape_open_resume()
+        finally:
+            self._close_resume_modal()
+        # 等列表恢复稳定
+        try:
+            self.page.wait_for_timeout(300)
+        except Exception:
+            pass
+        return text or ""
+
     def search_and_scrape_controlled(
         self,
         keyword: str,
@@ -250,6 +317,7 @@ class ProductCandidateSearcher(CandidateSearcher):
         on_page: Callable[[int, list], None] | None = None,
         control: Callable[[str, int, int], None] | None = None,
         filters: dict[str, Any] | None = None,
+        fetch_detail: bool = False,
     ) -> list[dict[str, Any]]:
         def check(stage: str, page_no: int, count: int) -> None:
             if control:
@@ -287,7 +355,8 @@ class ProductCandidateSearcher(CandidateSearcher):
                 break
             cards = self.page.query_selector_all(selector)
             page_new: list[dict[str, Any]] = []
-            for card in cards:
+            page_idx: list[int] = []
+            for idx, card in enumerate(cards):
                 check("before_candidate", page_no, len(candidates))
                 candidate = self._parse_search_card(card)
                 if not candidate:
@@ -298,10 +367,23 @@ class ProductCandidateSearcher(CandidateSearcher):
                 seen.add(key)
                 candidates.append(candidate)
                 page_new.append(candidate)
+                page_idx.append(idx)
                 if on_progress:
                     on_progress(len(candidates), page_no)
                 if len(candidates) >= max_count:
                     break
+            # 深度筛选：逐人打开简历弹窗抓全文（让智能体真正"看简历"）
+            if fetch_detail and page_new:
+                for cand, cidx in zip(page_new, page_idx):
+                    check("before_detail", page_no, len(candidates))
+                    try:
+                        fresh = self.page.query_selector_all(selector)
+                        if cidx < len(fresh):
+                            text = self.scrape_candidate_detail(fresh[cidx])
+                            if text and len(text) > len(cand.get("text", "") or ""):
+                                cand["full_text"] = text
+                    except Exception:
+                        pass
             if on_page and page_new:
                 on_page(page_no, page_new)
             if on_checkpoint:

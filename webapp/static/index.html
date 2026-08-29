@@ -212,6 +212,14 @@
   .timeline .ti{padding:5px 0;border-left:2px solid var(--line);padding-left:12px;position:relative}
   .timeline .ti::before{content:"";position:absolute;left:-4px;top:12px;width:6px;height:6px;border-radius:50%;background:var(--line2)}
 
+  /* 完整简历 */
+  .resume-full{background:#fafbfc;border:1px solid var(--line);border-radius:9px;padding:14px 16px;max-height:none}
+  .rsec{margin-bottom:16px}
+  .rsec:last-child{margin-bottom:0}
+  .rsec-t{font-size:13px;font-weight:700;color:var(--pri);margin-bottom:7px;padding-left:9px;border-left:3px solid var(--pri);line-height:1.2}
+  .rline{font-size:13px;color:var(--txt);line-height:1.75;padding:1px 0}
+  .rline.em{color:var(--mut);font-size:12px}
+
   /* ===== modal ===== */
   .modal-mask{position:fixed;inset:0;background:rgba(16,24,40,.45);z-index:90;display:none;place-items:center}
   .modal-mask.show{display:grid}
@@ -351,7 +359,11 @@ function renderJobView(){
           <button class="btn btn-ghost" onclick="exportJob()">⭳ 导出 Excel</button>
           ${activeRun
             ? '<button class="btn btn-danger" onclick="doStop()">停止本轮</button>'
-            : '<button class="btn btn-pri" onclick="startRecruit()">▶ 开始筛选</button>'}
+            : `<span style="display:inline-flex;align-items:center;gap:8px;background:#f8f9fc;border:1px solid var(--line);border-radius:8px;padding:6px 12px">
+                 <input id="targetN" type="number" value="60" min="10" max="500" style="width:64px;border:1px solid var(--line2);border-radius:6px;padding:5px 8px;font-size:13px"> <span style="font-size:12px;color:var(--mut)">人</span>
+                 <label style="display:inline-flex;align-items:center;gap:5px;font-size:12.5px;color:var(--sub);cursor:pointer;margin-left:6px"><input type="checkbox" id="deepMode" checked style="accent-color:var(--pri)"> 深度筛选<small style="color:var(--mut)">逐人读简历</small></label>
+               </span>
+               <button class="btn btn-pri" onclick="startRecruit()">▶ 开始筛选</button>`}
         </div>
       </div>
       <div class="stat-pills">
@@ -435,6 +447,7 @@ function renderProfile(){
       <div class="pf"><div class="k">最低学历</div><div class="v">${p.min_education||'不限'}</div></div>
       <div class="pf"><div class="k">最低经验</div><div class="v">${p.min_experience_years?p.min_experience_years+'年':'不限'}</div></div>
       <div class="pf"><div class="k">年龄要求</div><div class="v">${p.age_max?((p.age_min?p.age_min+'-':'≤')+p.age_max+'岁'):'不限'}</div></div>
+      <div class="pf"><div class="k">薪资预算</div><div class="v">${p.salary_max?((p.salary_min||'')+'-'+p.salary_max+'K'):'不限'}</div></div>
       <div class="pf"><div class="k">检索关键词</div><div class="v">${p.keyword||'—'}</div></div>
       <div class="pf"><div class="k">工作城市</div><div class="v">${(p.locations||[]).join(' / ')||'不限'}</div></div>
     </div>
@@ -449,6 +462,8 @@ function renderProfile(){
         ${['','大专','本科','硕士'].map(e=>`<option value="${e}" ${p.min_education===e?'selected':''}>${e||'不限'}</option>`).join('')}</select></div>
       <div class="pf"><div class="k">最低经验(年)</div><input id="e_exp" type="number" value="${p.min_experience_years||0}" min="0"></div>
       <div class="pf"><div class="k">年龄上限</div><input id="e_age" type="number" value="${p.age_max||''}" placeholder="不限"></div>
+      <div class="pf"><div class="k">薪资预算下限(K)</div><input id="e_smin" type="number" value="${p.salary_min||''}" placeholder="不限"></div>
+      <div class="pf"><div class="k">薪资预算上限(K)</div><input id="e_smax" type="number" value="${p.salary_max||''}" placeholder="不限"></div>
       <div class="pf"><div class="k">工作城市(逗号分隔)</div><input id="e_loc" value="${(p.locations||[]).join(',')}"></div>
       <div class="pf"><div class="k">证书要求(逗号分隔)</div><input id="e_cert" value="${(p.certificates||[]).join(',')}"></div>
     </div>
@@ -469,6 +484,8 @@ async function saveProfile(){
     min_education:$('e_edu').value,
     min_experience_years:parseInt($('e_exp').value||'0'),
     age_max:$('e_age').value?parseInt($('e_age').value):0,
+    salary_min:$('e_smin').value?parseInt($('e_smin').value):0,
+    salary_max:$('e_smax').value?parseInt($('e_smax').value):0,
     locations:$('e_loc').value.split(/[,，]/).map(s=>s.trim()).filter(Boolean),
     certificates:$('e_cert').value.split(/[,，]/).map(s=>s.trim()).filter(Boolean),
   };
@@ -585,10 +602,11 @@ async function batchStage(stage){
 
 // ================= recruit / polling =================
 async function startRecruit(){
-  const target = 100;
-  const r=await api(`/api/jobs/${curJobId}/start`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target_count:target})});
+  const target = parseInt($('targetN')?.value||'60');
+  const deep = $('deepMode')?.checked ?? true;
+  const r=await api(`/api/jobs/${curJobId}/start`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target_count:target,fetch_detail:deep})});
   if(!r.ok){toast(r.error||'启动失败');return}
-  toast('已开始筛选');
+  toast(deep?'已开始深度筛选（逐人读简历）':'已开始筛选');
   $('nTarget').textContent=target;
   const lc=$('liveCard'); lc.classList.add('show'); lc.classList.remove('collapsed'); $('liveCar').textContent='▾ 收起';
   running=true; startPolling();
@@ -622,6 +640,36 @@ async function showLogin(){ await api(`/api/jobs/${curJobId}/login_shown`,{metho
 function exportJob(){ if(!curJobId)return; window.open(`/api/jobs/${curJobId}/export`,'_blank'); toast('正在导出 Excel…'); }
 
 // ================= detail drawer =================
+// 把简历全文按段落标题切成结构化块
+function parseResumeSections(full){
+  if(!full) return [];
+  const heads=["求职期望","工作经历","项目经历","教育经历","培训经历","证书","自我评价","语言能力","在校经历"];
+  const lines=full.split("\n").map(s=>s.trim()).filter(Boolean);
+  const secs=[]; let cur=null;
+  for(const ln of lines){
+    if(heads.includes(ln)){ cur={title:ln,lines:[]}; secs.push(cur); }
+    else if(cur){ cur.lines.push(ln); }
+  }
+  return secs;
+}
+function renderResume(full){
+  const secs=parseResumeSections(full);
+  if(!secs.length) return '';
+  return `<div class="dsec"><h4>完整简历</h4><div class="resume-full">`+
+    secs.map(s=>{
+      // 工作经历/项目/教育 每行一块；求职期望标签化
+      if(s.title==='求职期望'){
+        return `<div class="rsec"><div class="rsec-t">${s.title}</div><div class="prof-tags">${s.lines.filter(l=>l!=='展开').map(l=>`<span class="tag">${l}</span>`).join('')}</div></div>`;
+      }
+      const body=s.lines.map(l=>{
+        // 时间段/薪资 淡化
+        const em=/^\d{4}\.\d{2}|至今|至今|个月|年\)|元\/月|万\/月|千\/月|空档期/.test(l);
+        return `<div class="rline ${em?'em':''}">${l}</div>`;
+      }).join('');
+      return `<div class="rsec"><div class="rsec-t">${s.title}</div>${body}</div>`;
+    }).join('')+`</div></div>`;
+}
+
 async function openDrawer(id){
   const r=await api(`/api/candidates/${id}`);
   if(!r.ok){toast('加载失败');return}
@@ -651,6 +699,7 @@ async function openDrawer(id){
           <div class="score-break">
             <div>命中技能：<span class="bhit">${(ev.title_hits&&ev.title_hits.length)?ev.title_hits.join('、'):'—'}</span></div>
             <div>持证：<span class="${matchedCerts.length?'bhit':'bmiss'}">${matchedCerts.length?matchedCerts.join('、'):'未在卡片体现'}</span></div>
+            <div>薪资匹配：<span class="${ev.salary_state==='fit'||ev.salary_state==='below'?'bhit':(ev.salary_state==='over'||ev.salary_state==='way_over')?'bmiss':''}">${ev.salary_state==='fit'?'在预算内':ev.salary_state==='below'?'低于预算(性价比高)':ev.salary_state==='over'?'略高于预算':ev.salary_state==='way_over'?'明显高于预算':'未知'}</span></div>
             <div>学历/经验/年龄：${c.education||'—'} · ${c.experience||'—'} · ${c.age?c.age+'岁':'—'}</div>
           </div>
         </div>
@@ -665,6 +714,7 @@ async function openDrawer(id){
       </div></div>
       ${c.skills?`<div class="dsec"><h4>技能标签</h4><div class="prof-tags">${c.skills.split(/[,，、]/).filter(Boolean).slice(0,10).map(s=>`<span class="tag">${s.trim()}</span>`).join('')}</div></div>`:''}
       <div class="dsec"><h4>匹配理由</h4><ul class="reason-list">${reasonLi}</ul></div>
+      ${renderResume(c.full_text)}
       <div class="dsec"><h4>招聘流转</h4><div class="stage-btns">
         ${['TO_REVIEW','TALENT_POOL','TO_CONTACT','CONTACTED','INTERVIEW','REJECTED'].map(s=>`<button class="stage-btn ${c.stage===s?'cur':''}" onclick="drawerStage(${c.id},'${s}')">${STAGE_CN[s]}</button>`).join('')}
       </div></div>

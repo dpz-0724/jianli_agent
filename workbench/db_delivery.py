@@ -262,15 +262,15 @@ class DeliveryDatabaseMixin:
                 """
                 INSERT INTO candidates(
                     canonical_key,platform,platform_uid,name,title,location,education,experience,
-                    activity,skills,text,source_url,age,expected_salary,certificates,first_seen_at,last_seen_at,merged_into_candidate_id
-                ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL)
+                    activity,skills,text,source_url,age,expected_salary,certificates,full_text,first_seen_at,last_seen_at,merged_into_candidate_id
+                ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL)
                 """,
                 (
                     canonical_key, platform, platform_uid, data.get("name", ""), data.get("title", ""),
                     data.get("location", ""), data.get("education", ""), data.get("experience", ""),
                     data.get("activity", ""), data.get("skills", ""), data.get("text", ""),
                     source_url, int(data.get("age") or 0), str(data.get("expected_salary") or ""),
-                    str(data.get("certificates") or ""), now, now,
+                    str(data.get("certificates") or ""), str(data.get("full_text") or ""), now, now,
                 ),
             )
             candidate_id = int(cur.lastrowid)
@@ -292,6 +292,7 @@ class DeliveryDatabaseMixin:
                     age=CASE WHEN ?>0 THEN ? ELSE age END,
                     expected_salary=COALESCE(NULLIF(?,''),expected_salary),
                     certificates=COALESCE(NULLIF(?,''),certificates),
+                    full_text=CASE WHEN ? != '' THEN ? ELSE full_text END,
                     last_seen_at=?
                 WHERE id=?
                 """,
@@ -302,6 +303,7 @@ class DeliveryDatabaseMixin:
                     source_url,
                     int(data.get("age") or 0), int(data.get("age") or 0),
                     str(data.get("expected_salary") or ""), str(data.get("certificates") or ""),
+                    str(data.get("full_text") or ""), str(data.get("full_text") or ""),
                     now, candidate_id,
                 ),
             )

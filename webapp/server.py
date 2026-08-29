@@ -200,6 +200,7 @@ def api_list_jobs():
 @app.post("/api/jobs/{job_id}/start")
 def api_start(job_id: int, payload: dict = Body(default={})):
     target = int(payload.get("target_count") or 100)
+    fetch_detail = bool(payload.get("fetch_detail", False))
     target = max(10, min(target, 500))
     job = db.get_job(job_id)
     if not job:
@@ -224,6 +225,7 @@ def api_start(job_id: int, payload: dict = Body(default={})):
     worker.submit("SEARCH", {
         "run_id": run_id, "query": query, "max_pages": max_pages,
         "max_count": target, "start_page": 1, "filters": filters,
+        "fetch_detail": fetch_detail,
     })
     return {"ok": True, "run_id": run_id, "query": query, "max_pages": max_pages, "target": target}
 
@@ -271,13 +273,25 @@ def _serialize_candidate(r: dict, *, detail: bool = False) -> dict:
         "reasons": r.get("reasons", [])[:8],
         "stage": r.get("stage") or "TO_REVIEW",
         "note": r.get("note", ""),
+        "has_resume": bool(r.get("full_text")),
     }
     if detail:
         item["evidence"] = r.get("evidence", {})
         item["text"] = r.get("text", "")
+        item["full_text"] = r.get("full_text", "")
         item["source_url"] = r.get("source_url", "")
         item["last_seen_at"] = r.get("last_seen_at", "")
     return item
+
+
+def _serialize_profile(p) -> dict:
+    return {
+        "keyword": p.keyword, "required_skills": list(p.required_skills),
+        "preferred_skills": list(p.preferred_skills), "min_education": p.min_education,
+        "min_experience_years": p.min_experience_years, "locations": list(p.locations),
+        "age_min": p.age_min, "age_max": p.age_max, "certificates": list(p.certificates),
+        "salary_min": p.salary_min, "salary_max": p.salary_max,
+    }
 
 
 _SORT_KEYS = {
@@ -300,12 +314,7 @@ def api_job_detail(job_id: int):
     return {"ok": True, "job": {
         "id": job_id, "title": job["title"], "keyword": job.get("keyword", ""),
         "jd": job.get("jd", ""), "created_at": job.get("created_at", ""),
-        "profile": {
-            "keyword": profile.keyword, "required_skills": list(profile.required_skills),
-            "preferred_skills": list(profile.preferred_skills), "min_education": profile.min_education,
-            "min_experience_years": profile.min_experience_years, "locations": list(profile.locations),
-            "age_min": profile.age_min, "age_max": profile.age_max, "certificates": list(profile.certificates),
-        },
+        "profile": _serialize_profile(profile),
         "stats": {
             "total": len(rows),
             "pass": sum(1 for r in rows if r.get("assessment_status") == "PASS"),
@@ -367,14 +376,11 @@ def api_update_profile(job_id: int, payload: dict = Body(...)):
         required_skills=payload.get("required_skills"),
         preferred_skills=payload.get("preferred_skills"),
         certificates=payload.get("certificates"),
+        salary_min=payload.get("salary_min"),
+        salary_max=payload.get("salary_max"),
         confirmed_by="web",
     )
-    return {"ok": True, "profile": {
-        "keyword": profile.keyword, "required_skills": list(profile.required_skills),
-        "preferred_skills": list(profile.preferred_skills), "min_education": profile.min_education,
-        "min_experience_years": profile.min_experience_years, "locations": list(profile.locations),
-        "age_min": profile.age_min, "age_max": profile.age_max, "certificates": list(profile.certificates),
-    }}
+    return {"ok": True, "profile": _serialize_profile(profile)}
 
 
 @app.get("/api/jobs/{job_id}/export")

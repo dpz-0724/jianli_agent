@@ -87,6 +87,8 @@ class RequirementProfile:
     age_min: int = 0
     age_max: int = 0
     certificates: tuple[str, ...] = ()
+    salary_min: int = 0   # 岗位预算下限（K/月）
+    salary_max: int = 0   # 岗位预算上限（K/月）
     source_evidence: dict[str, list[str]] = field(default_factory=dict)
     parser_version: str = "rules-v1"
 

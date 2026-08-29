@@ -298,6 +298,7 @@ class BrowserWorker:
                     bot, command.request_id, run_id, stage, page_no, count
                 ),
                 filters=payload.get("filters") or None,
+                fetch_detail=bool(payload.get("fetch_detail", False)),
             )
             self._stop_trace(bot)
             self._emit(

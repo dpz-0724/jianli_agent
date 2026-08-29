@@ -179,6 +179,49 @@ def _extract_age_range(text: str) -> tuple[int, int, list[str]]:
     return 0, 0, []
 
 
+def parse_salary_to_k(text: str) -> tuple[int, int]:
+    """把 '8-12K' / '8千-1.2万' / '1万-1.5万' / '3万/月' 等解析为 (minK, maxK)。解析不到返回 (0,0)。"""
+    t = (text or "").replace(" ", "")
+    if not t:
+        return 0, 0
+
+    def _to_k(num: float, unit: str) -> int:
+        if unit == "万":
+            return int(round(num * 10))
+        if unit in ("千", "k", "K"):
+            return int(round(num))
+        # 纯数字：>=1000 视为元/月，转 K；否则视为 K
+        return int(round(num / 1000)) if num >= 1000 else int(round(num))
+
+    # X千-Y万  / X万-Y万 / XK-YK / X-YK
+    m = re.search(r"(\d+(?:\.\d+)?)(千|万|k|K)?[-~—至到](\d+(?:\.\d+)?)(千|万|k|K)", t)
+    if m:
+        lo = _to_k(float(m.group(1)), m.group(2) or "")
+        hi = _to_k(float(m.group(3)), m.group(4) or "")
+        if lo and hi:
+            return (min(lo, hi), max(lo, hi))
+    # 单个 X万 / X千 / XK
+    m = re.search(r"(\d+(?:\.\d+)?)(万|千|k|K)", t)
+    if m:
+        v = _to_k(float(m.group(1)), m.group(2))
+        return (v, v)
+    return 0, 0
+
+
+def _extract_salary_budget(text: str) -> tuple[int, int, list[str]]:
+    """从 JD 提取岗位薪资预算（K）。命中 薪资/月薪/待遇 等语境优先。"""
+    for clause in re.split(r"[。；;\n]", text or ""):
+        if any(k in clause for k in ("薪资", "月薪", "待遇", "工资", "薪酬", "薪")):
+            lo, hi = parse_salary_to_k(clause)
+            if lo and hi:
+                return lo, hi, [clause.strip()[:60]]
+    # 兜底：全文任意薪资
+    lo, hi = parse_salary_to_k(text or "")
+    if lo and hi:
+        return lo, hi, []
+    return 0, 0, []
+
+
 def _extract_skills_by_context(jd: str) -> tuple[list[str], list[str], dict[str, list[str]]]:
     required: list[str] = []
     preferred: list[str] = []
@@ -232,6 +275,7 @@ def build_requirement_profile(
 
     certificates, cert_evidence = _extract_certificates(jd)
     age_min, age_max, age_evidence = _extract_age_range(jd)
+    salary_min, salary_max, salary_evidence = _extract_salary_budget(jd)
 
     source_evidence = {
         "education": education_evidence,
@@ -239,6 +283,7 @@ def build_requirement_profile(
         "locations": location_evidence,
         "certificates": cert_evidence,
         "age": age_evidence,
+        "salary": salary_evidence,
     }
     for skill, clauses in skill_evidence.items():
         source_evidence[f"skill:{skill}"] = clauses
@@ -254,6 +299,8 @@ def build_requirement_profile(
         age_min=age_min,
         age_max=age_max,
         certificates=tuple(dict.fromkeys(certificates)),
+        salary_min=salary_min,
+        salary_max=salary_max,
         source_evidence=source_evidence,
         parser_version=PARSER_VERSION,
     )
@@ -319,7 +366,7 @@ def sanitize_candidate(candidate: dict) -> dict:
     allowed = (
         "platform_uid", "name", "title", "location", "education", "experience",
         "activity", "skills", "text", "source", "source_url", "platform",
-        "age", "expected_salary", "certificates",
+        "age", "expected_salary", "certificates", "full_text",
     )
     return {key: candidate.get(key, "") for key in allowed}
 
@@ -350,9 +397,10 @@ def source_snapshot_hash(candidate: dict) -> str:
 
 def assess_candidate(candidate: dict, profile: RequirementProfile) -> CandidateAssessment:
     sanitized = sanitize_candidate(candidate)
+    # 完整简历全文优先（若有），技能/经验匹配基于全文，比卡片摘要准得多
     searchable_text = " ".join(
         str(sanitized.get(key, "") or "")
-        for key in ("title", "skills", "text", "education", "experience")
+        for key in ("title", "skills", "text", "education", "experience", "full_text")
     )
 
     matched_required = [skill for skill in profile.required_skills if _contains_token(searchable_text, skill)]
@@ -468,6 +516,30 @@ def assess_candidate(candidate: dict, profile: RequirementProfile) -> CandidateA
             positives.append("持有证书：" + "、".join(matched_certs))
         # 缺失证书不压状态：搜索卡片阶段无法核验证书，需看完整简历；只在持有时加分
 
+    # 薪资匹配：候选人期望 vs 岗位预算（HR 最高频的淘汰理由）
+    salary_state = "not_applicable"
+    salary_fit_value: float | None = None
+    if profile.salary_max or profile.salary_min:
+        cand_lo, cand_hi = parse_salary_to_k(str(sanitized.get("expected_salary", "") or ""))
+        budget_hi = profile.salary_max or profile.salary_min
+        budget_lo = profile.salary_min or 0
+        if cand_lo == 0 and cand_hi == 0:
+            salary_state = "unknown"  # 期望薪资未知，不扣分
+        else:
+            cand_expect = cand_lo or cand_hi  # 候选人可接受的底线
+            if budget_hi and cand_expect > budget_hi * 1.3:
+                reviews.append(f"期望薪资 {sanitized.get('expected_salary')} 明显高于岗位预算（{profile.salary_min}-{profile.salary_max}K）")
+                salary_state = "way_over"; salary_fit_value = 0.0
+            elif budget_hi and cand_expect > budget_hi:
+                reviews.append(f"期望薪资 {sanitized.get('expected_salary')} 略高于岗位预算")
+                salary_state = "over"; salary_fit_value = 0.4
+            elif budget_lo and cand_hi and cand_hi < budget_lo:
+                positives.append(f"期望薪资 {sanitized.get('expected_salary')} 低于预算，性价比高")
+                salary_state = "below"; salary_fit_value = 1.0
+            else:
+                positives.append(f"期望薪资 {sanitized.get('expected_salary')} 在预算内")
+                salary_state = "fit"; salary_fit_value = 1.0
+
     weighted: list[tuple[float, float]] = []
     if required_coverage is not None:
         weighted.append((required_coverage, 0.50))
@@ -479,6 +551,8 @@ def assess_candidate(candidate: dict, profile: RequirementProfile) -> CandidateA
         weighted.append((len(matched_certs) / len(profile.certificates), 0.10))
     if location_match is not None:
         weighted.append((1.0 if location_match else 0.0, 0.05))
+    if salary_fit_value is not None:
+        weighted.append((salary_fit_value, 0.08))
 
     # 区分度：教育质量与经验丰富度（满足门槛后，越高越好）
     cand_edu_level = _education_level(str(sanitized.get("education", "")))
@@ -513,6 +587,8 @@ def assess_candidate(candidate: dict, profile: RequirementProfile) -> CandidateA
         "experience_state": experience_state,
         "age_state": age_state,
         "candidate_age": candidate_age,
+        "salary_state": salary_state,
+        "candidate_salary": str(sanitized.get("expected_salary", "") or ""),
         "matched_certificates": matched_certs,
         "missing_certificates": missing_certs,
         "experience_range": (

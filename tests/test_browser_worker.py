@@ -33,6 +33,7 @@ class FakeBot:
         control,
         on_page=None,
         filters=None,
+        fetch_detail=False,
     ):
         self.thread_id = threading.get_ident()
         result = []
