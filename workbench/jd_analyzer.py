@@ -55,6 +55,44 @@ SALARY_PATTERNS = [
 
 TITLE_HINTS = ["岗位", "职位", "招聘", "诚聘", "职位名称", "岗位名称"]
 
+# 角色后缀：JD 首行常以"XX工程师/XX经理"直接开头（无"岗位名称："标签）
+_ROLE_SUFFIXES = (
+    "工程师", "经理", "专员", "主管", "总监", "顾问", "代表", "运营", "会计", "设计师",
+    "助理", "分析师", "销售", "文员", "出纳", "策划", "编辑", "客服", "驾驶员", "司机",
+    "电工", "焊工", "技师", "护士", "教师", "医生", "律师", "翻译", "采购", "跟单",
+    "开发", "架构师", "测试", "运维", "产品", "人事", "行政", "财务", "店长", "督导",
+)
+
+
+def _looks_like_title(line: str) -> bool:
+    """首行是否像一个岗位名：短、无标点、以角色后缀结尾。"""
+    s = line.strip()
+    if not (2 <= len(s) <= 18):
+        return False
+    if any(ch in s for ch in "：:，,。.、;；（）()【】"):
+        return False
+    return any(s.endswith(suf) for suf in _ROLE_SUFFIXES)
+
+
+def _infer_job_title(text: str, keyword: str) -> str:
+    lines = [l.strip() for l in (text or "").splitlines() if l.strip()]
+    for line in lines:
+        # 长词优先匹配，避免 "岗位名称：X" 被 "岗位" 吃掉
+        m = re.match(r"^(?:岗位名称|职位名称|招聘岗位|招聘职位|岗位|职位|招聘|诚聘)[：:：\s]*(.{2,20})$", line)
+        if m:
+            title = re.sub(r"^[：:：\s]+|[：:：\s]+$", "", m.group(1)).strip()
+            if title and not any(h in title for h in ("职责", "要求", "任职")):
+                return title
+        if len(line) <= 20 and any(h in line for h in TITLE_HINTS):
+            cleaned = re.sub(r"(岗位名称|职位名称|岗位|职位|招聘|诚聘|名称)[：:：]?", "", line).strip()
+            cleaned = re.sub(r"(岗位|职位|招聘|诚聘)$", "", cleaned).strip()
+            if 2 <= len(cleaned) <= 20 and "：" not in cleaned and ":" not in cleaned:
+                return cleaned
+    # 兜底：首行直接是岗位名（"Java后端工程师" 这种最常见的 JD 写法）
+    if lines and _looks_like_title(lines[0]):
+        return lines[0]
+    return (keyword or "").strip()
+
 
 @dataclass(frozen=True)
 class JobAnalysis:
@@ -103,25 +141,6 @@ def _extract_salary(text: str) -> tuple[str, list[str]]:
     if m:
         return f"{m.group(1)}-{m.group(2)}元", [m.group(0)]
     return "", []
-
-
-def _infer_job_title(text: str, keyword: str) -> str:
-    for line in (text or "").splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        # 长词优先匹配，避免 "岗位名称：X" 被 "岗位" 吃掉
-        m = re.match(r"^(?:岗位名称|职位名称|招聘岗位|招聘职位|岗位|职位|招聘|诚聘)[：:：\s]*(.{2,20})$", line)
-        if m:
-            title = re.sub(r"^[：:：\s]+|[：:：\s]+$", "", m.group(1)).strip()
-            if title and not any(h in title for h in ("职责", "要求", "任职")):
-                return title
-        if len(line) <= 20 and any(h in line for h in TITLE_HINTS):
-            cleaned = re.sub(r"(岗位名称|职位名称|岗位|职位|招聘|诚聘|名称)[：:：]?", "", line).strip()
-            cleaned = re.sub(r"(岗位|职位|招聘|诚聘)$", "", cleaned).strip()
-            if 2 <= len(cleaned) <= 20 and "：" not in cleaned and ":" not in cleaned:
-                return cleaned
-    return (keyword or "").strip()
 
 
 _CERT_NORM = {
