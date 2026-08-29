@@ -198,6 +198,7 @@ class RecruitmentService:
                 "age": row.get("age", 0),
                 "expected_salary": row.get("expected_salary", ""),
                 "certificates": row.get("certificates", ""),
+                "full_text": row.get("full_text", ""),
                 "platform": "zhilian",
             }
             assessment = assess_candidate(candidate, profile)

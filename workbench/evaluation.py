@@ -222,6 +222,28 @@ def _extract_salary_budget(text: str) -> tuple[int, int, list[str]]:
     return 0, 0, []
 
 
+def _analyze_stability(full_text: str) -> tuple[int, int]:
+    """从完整简历分析稳定性。返回 (平均任期月数, 最长空档月数)。无数据返回 (0,0)。
+
+    简历工作经历里每段带 '(X年Y个月)' 任期；智联还会标注 '两份工作间有N个月空档期'。
+    """
+    t = full_text or ""
+    if not t:
+        return 0, 0
+    # 任期：(6年1个月) / (6年) / (5个月)
+    tenures = []
+    for m in re.finditer(r"\((?:(\d+)年)?\s*(?:(\d+)个?月)?\)", t):
+        y = int(m.group(1) or 0); mo = int(m.group(2) or 0)
+        months = y * 12 + mo
+        if 0 < months <= 600:
+            tenures.append(months)
+    avg_tenure = round(sum(tenures) / len(tenures)) if tenures else 0
+    # 空档期
+    gaps = [int(x) for x in re.findall(r"(\d+)\s*个?月空档", t)]
+    max_gap = max(gaps) if gaps else 0
+    return avg_tenure, max_gap
+
+
 def _extract_skills_by_context(jd: str) -> tuple[list[str], list[str], dict[str, list[str]]]:
     required: list[str] = []
     preferred: list[str] = []
@@ -526,12 +548,13 @@ def assess_candidate(candidate: dict, profile: RequirementProfile) -> CandidateA
         if cand_lo == 0 and cand_hi == 0:
             salary_state = "unknown"  # 期望薪资未知，不扣分
         else:
-            cand_expect = cand_lo or cand_hi  # 候选人可接受的底线
+            # 用期望区间中位数作为真实期望，比下限更准（期望12-20K的人不会因下限12就算"在预算内"）
+            cand_expect = round((cand_lo + cand_hi) / 2) if cand_hi else cand_lo
             if budget_hi and cand_expect > budget_hi * 1.3:
                 reviews.append(f"期望薪资 {sanitized.get('expected_salary')} 明显高于岗位预算（{profile.salary_min}-{profile.salary_max}K）")
                 salary_state = "way_over"; salary_fit_value = 0.0
             elif budget_hi and cand_expect > budget_hi:
-                reviews.append(f"期望薪资 {sanitized.get('expected_salary')} 略高于岗位预算")
+                reviews.append(f"期望薪资 {sanitized.get('expected_salary')} 高于岗位预算（{profile.salary_min}-{profile.salary_max}K）")
                 salary_state = "over"; salary_fit_value = 0.4
             elif budget_lo and cand_hi and cand_hi < budget_lo:
                 positives.append(f"期望薪资 {sanitized.get('expected_salary')} 低于预算，性价比高")
@@ -539,6 +562,15 @@ def assess_candidate(candidate: dict, profile: RequirementProfile) -> CandidateA
             else:
                 positives.append(f"期望薪资 {sanitized.get('expected_salary')} 在预算内")
                 salary_state = "fit"; salary_fit_value = 1.0
+
+    # 稳定性信号（仅在有完整简历时可得，卡片上没有）：空档期 / 平均任期
+    avg_tenure_m, max_gap_m = _analyze_stability(str(sanitized.get("full_text", "") or ""))
+    if max_gap_m >= 12:
+        reviews.append(f"简历存在 {max_gap_m} 个月空档期，稳定性需关注")
+    elif avg_tenure_m and avg_tenure_m < 14:
+        reviews.append(f"平均任期约 {avg_tenure_m} 个月，跳槽较频繁")
+    elif avg_tenure_m and avg_tenure_m >= 36:
+        positives.append(f"平均任期约 {avg_tenure_m//12} 年，稳定性好")
 
     weighted: list[tuple[float, float]] = []
     if required_coverage is not None:
@@ -589,6 +621,8 @@ def assess_candidate(candidate: dict, profile: RequirementProfile) -> CandidateA
         "candidate_age": candidate_age,
         "salary_state": salary_state,
         "candidate_salary": str(sanitized.get("expected_salary", "") or ""),
+        "avg_tenure_months": avg_tenure_m,
+        "max_gap_months": max_gap_m,
         "matched_certificates": matched_certs,
         "missing_certificates": missing_certs,
         "experience_range": (
