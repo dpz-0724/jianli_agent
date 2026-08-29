@@ -305,7 +305,7 @@ let curJobId = null;
 let curJob = null;
 let candidates = [];
 let selected = new Set();
-let filters = {status:"ALL", stage:"ALL", search:"", education:"", sort:"score", order:"desc"};
+let filters = {status:"ALL", stage:"ALL", search:"", education:"", activity:"", sort:"score", order:"desc"};
 let runTimer = null, picTimer = null, pollTimer = null;
 let running = false;
 
@@ -427,6 +427,9 @@ function renderJobView(){
         <select class="fl" id="eduTab" onchange="setEdu(this.value)">
           <option value="">全部学历</option><option>大专</option><option>本科</option><option>硕士</option><option>博士</option>
         </select>
+        <select class="fl" id="actTab" onchange="setAct(this.value)">
+          <option value="">全部活跃度</option><option>在线</option><option>刚刚活跃</option><option>今日活跃</option><option>本周活跃</option>
+        </select>
         <div class="search-box"><input id="searchBox" placeholder="搜索姓名/职位/技能" oninput="debSearch(this.value)"></div>
         <div class="tb-right">
           <span class="mut" id="candTotal" style="font-size:12.5px"></span>
@@ -518,6 +521,7 @@ function bindTabs(){
 }
 function setStage(v){filters.stage=v;loadCandidates()}
 function setEdu(v){filters.education=v;loadCandidates()}
+function setAct(v){filters.activity=v;loadCandidates()}
 let _st=null;
 function debSearch(v){clearTimeout(_st);_st=setTimeout(()=>{filters.search=v;loadCandidates()},350)}
 function setSort(col){
@@ -528,7 +532,7 @@ function setSort(col){
 
 async function loadCandidates(){
   if(!curJobId)return;
-  const q=new URLSearchParams({status:filters.status,stage:filters.stage,search:filters.search,education:filters.education,sort:filters.sort,order:filters.order,limit:1000});
+  const q=new URLSearchParams({status:filters.status,stage:filters.stage,search:filters.search,education:filters.education,activity:filters.activity,sort:filters.sort,order:filters.order,limit:1000});
   const r=await api(`/api/jobs/${curJobId}/candidates?`+q);
   candidates=r.candidates||[];
   $('candTotal').textContent=`共 ${r.total??candidates.length} 人`;

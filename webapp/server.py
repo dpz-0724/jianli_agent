@@ -328,11 +328,13 @@ def api_job_detail(job_id: int):
 
 @app.get("/api/jobs/{job_id}/candidates")
 def api_candidates(job_id: int, status: str = "ALL", stage: str = "ALL", search: str = "",
-                   education: str = "", sort: str = "score", order: str = "desc", limit: int = 1000):
+                   education: str = "", activity: str = "", sort: str = "score", order: str = "desc", limit: int = 1000):
     rows = db.list_job_candidates(job_id, assessment_status=status,
                                   stage=stage, search=search, limit=100000)
     if education:
         rows = [r for r in rows if (r.get("education") or "") == education]
+    if activity:
+        rows = [r for r in rows if activity in (r.get("activity") or "")]
     key = _SORT_KEYS.get(sort, _SORT_KEYS["score"])
     rows.sort(key=key, reverse=(order != "asc"))
     out = [_serialize_candidate(r) for r in rows[:limit]]
