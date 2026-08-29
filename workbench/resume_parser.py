@@ -58,6 +58,10 @@ def _is_desc(line: str) -> bool:
 # 空档/间隔行（"两份工作间有9个月空档期"等）——不是公司/职位
 _GAP_RE = re.compile(r"(空档|两份工作之间|两份工作间)")
 
+# 学校特征词 与 学历词
+_SCHOOL_RE = re.compile(r"(大学|学院|学校|中学|职院|职业技术学院|高等专科|高中|初中|小学|研究所|研究生院)")
+_DEGREE_WORDS = {"博士", "硕士", "MBA", "EMBA", "本科", "大专", "专科", "高中", "中专", "中技", "初中", "统招"}
+
 
 def _split_sections(lines: list[str]) -> dict[str, list[str]]:
     secs: dict[str, list[str]] = {}
@@ -123,7 +127,10 @@ def _parse_edu(lines: list[str]) -> list[dict]:
             i -= 1
         nxt = period_idx[k + 1] if k + 1 < len(period_idx) else len(lines)
         tail = lines[p + 1:nxt]
-        school = header[0] if header else ""
+        # 学校用特征词定位（多段教育时表头会卷入上一段的专业/学历行，取第一行不可靠）
+        school = next((h for h in header if _SCHOOL_RE.search(h)), "")
+        if not school:  # 兜底：第一行不是学历/专业味儿的词就当学校
+            school = next((h for h in header if h not in _DEGREE_WORDS), "")
         degree = ""
         for t in tail:
             if t in ("博士", "硕士", "MBA", "本科", "大专", "高中", "中专", "初中"):
