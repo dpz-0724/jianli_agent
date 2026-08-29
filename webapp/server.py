@@ -346,6 +346,13 @@ def api_candidate_detail(job_candidate_id: int):
         return JSONResponse({"ok": False, "error": "候选人不存在"}, status_code=404)
     item = _serialize_candidate(r, detail=True)
     item["follow_ups"] = db.list_follow_ups(job_candidate_id)
+    # 结构化解析完整简历（若有），供前端渲染工作经历时间线
+    if item.get("full_text"):
+        try:
+            from workbench.resume_parser import parse_resume
+            item["parsed_resume"] = parse_resume(item["full_text"])
+        except Exception:
+            item["parsed_resume"] = None
     return {"ok": True, "candidate": item}
 
 

@@ -219,6 +219,13 @@
   .rsec-t{font-size:13px;font-weight:700;color:var(--pri);margin-bottom:7px;padding-left:9px;border-left:3px solid var(--pri);line-height:1.2}
   .rline{font-size:13px;color:var(--txt);line-height:1.75;padding:1px 0}
   .rline.em{color:var(--mut);font-size:12px}
+  /* 工作经历时间线卡片 */
+  .work-card{background:#fff;border:1px solid var(--line);border-left:3px solid var(--pri);border-radius:8px;padding:11px 13px;margin-bottom:10px}
+  .work-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+  .work-co{font-size:13.5px;font-weight:700}
+  .work-period{margin-left:auto;font-size:11.5px;color:var(--mut);font-variant-numeric:tabular-nums}
+  .work-title{font-size:12.5px;color:var(--pri);font-weight:600;margin-top:2px}
+  .work-desc{font-size:12.5px;color:var(--sub);line-height:1.75;margin-top:6px}
 
   /* ===== modal ===== */
   .modal-mask{position:fixed;inset:0;background:rgba(16,24,40,.45);z-index:90;display:none;place-items:center}
@@ -672,6 +679,39 @@ function renderResume(full){
     }).join('')+`</div></div>`;
 }
 
+// 结构化简历渲染（有 parsed_resume 时优先）
+function renderStructuredResume(pr){
+  if(!pr) return '';
+  let h='';
+  if(pr.expectation){
+    const e=pr.expectation;
+    h+=`<div class="rsec"><div class="rsec-t">求职期望</div><div class="prof-tags">
+      ${e.location?`<span class="tag">${e.location}</span>`:''}${e.title?`<span class="tag">${e.title}</span>`:''}${e.salary?`<span class="tag">${e.salary}</span>`:''}${e.industry?`<span class="tag c">${e.industry}</span>`:''}</div></div>`;
+  }
+  if(pr.work&&pr.work.length){
+    h+=`<div class="rsec"><div class="rsec-t">工作经历</div>`+pr.work.map(w=>`
+      <div class="work-card">
+        <div class="work-head"><span class="work-co">${w.company||'—'}</span>
+          <span class="work-period">${w.period||''}${w.salary?(' · '+w.salary):''}</span></div>
+        ${w.title?`<div class="work-title">${w.title}</div>`:''}
+        ${w.tags&&w.tags.length?`<div class="prof-tags" style="margin-top:5px">${w.tags.slice(0,6).map(t=>`<span class="tag">${t}</span>`).join('')}</div>`:''}
+        ${w.description?`<div class="work-desc">${w.description}</div>`:''}
+      </div>`).join('')+`</div>`;
+  }
+  if(pr.education&&pr.education.length){
+    h+=`<div class="rsec"><div class="rsec-t">教育经历</div>`+pr.education.map(e=>`
+      <div class="work-card"><div class="work-head"><span class="work-co">${e.school||'—'}</span><span class="work-period">${e.period||''}</span></div>
+      <div class="work-title">${[e.major,e.degree].filter(Boolean).join(' · ')}</div></div>`).join('')+`</div>`;
+  }
+  if(pr.certificates&&pr.certificates.length){
+    h+=`<div class="rsec"><div class="rsec-t">证书</div><div class="prof-tags">${pr.certificates.map(x=>`<span class="tag c">${x}</span>`).join('')}</div></div>`;
+  }
+  if(pr.advantages){
+    h+=`<div class="rsec"><div class="rsec-t">个人优势</div><div class="work-desc">${pr.advantages.slice(0,500)}</div></div>`;
+  }
+  return h?`<div class="dsec"><h4>完整简历</h4><div class="resume-full">${h}</div></div>`:'';
+}
+
 async function openDrawer(id){
   const r=await api(`/api/candidates/${id}`);
   if(!r.ok){toast('加载失败');return}
@@ -716,7 +756,7 @@ async function openDrawer(id){
       </div></div>
       ${c.skills?`<div class="dsec"><h4>技能标签</h4><div class="prof-tags">${c.skills.split(/[,，、]/).filter(Boolean).slice(0,10).map(s=>`<span class="tag">${s.trim()}</span>`).join('')}</div></div>`:''}
       <div class="dsec"><h4>匹配理由</h4><ul class="reason-list">${reasonLi}</ul></div>
-      ${renderResume(c.full_text)}
+      ${c.parsed_resume?renderStructuredResume(c.parsed_resume):renderResume(c.full_text)}
       <div class="dsec"><h4>招聘流转</h4><div class="stage-btns">
         ${['TO_REVIEW','TALENT_POOL','TO_CONTACT','CONTACTED','INTERVIEW','REJECTED'].map(s=>`<button class="stage-btn ${c.stage===s?'cur':''}" onclick="drawerStage(${c.id},'${s}')">${STAGE_CN[s]}</button>`).join('')}
       </div></div>
