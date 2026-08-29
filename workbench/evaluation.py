@@ -128,6 +128,8 @@ def _extract_min_years(text: str) -> tuple[int, list[str]]:
         r"(\d{1,2})\s*年\s*(?:以上|及以上|起)",
         r"至少\s*(\d{1,2})\s*年",
         r"(\d{1,2})\s*[-—~至到]\s*\d{1,2}\s*年",
+        # 最常见的"X年(相关)经验"写法；负向后瞻避免误吃"1-3年"里的下界
+        r"(?<![-—~至到\d])(\d{1,2})\s*年[^，。；;\n]{0,8}?经验",
     )
     for pattern in patterns:
         for match in re.finditer(pattern, text or ""):

@@ -61,6 +61,8 @@ _ROLE_SUFFIXES = (
     "助理", "分析师", "销售", "文员", "出纳", "策划", "编辑", "客服", "驾驶员", "司机",
     "电工", "焊工", "技师", "护士", "教师", "医生", "律师", "翻译", "采购", "跟单",
     "开发", "架构师", "测试", "运维", "产品", "人事", "行政", "财务", "店长", "督导",
+    "建造师", "会计师", "审计师", "评估师", "经济师", "营养师", "咨询师", "厨师",
+    "摄影师", "美容师", "设计师", "规划师", "经纪人", "乘务员", "保安", "保洁",
 )
 
 
@@ -163,7 +165,9 @@ def _build_search_query(job_title: str, keyword: str, required: Iterable[str]) -
     core = [s for s in required if s and len(s) >= 2][:1]
     if core and core[0].lower() not in " ".join(parts).lower():
         parts.append(core[0])
-    return " ".join(parts).strip() or "销售"
+    # 绝不硬编码兜底成某个具体岗位（否则非销售岗会错搜"销售"）——取不到就返回空，
+    # 由调用方回退到用户填的岗位名（api_start: keyword or search_query or job.title）
+    return " ".join(parts).strip()
 
 
 def analyze_job(text: str, keyword: str = "") -> JobAnalysis:
