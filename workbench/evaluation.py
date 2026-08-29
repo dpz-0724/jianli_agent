@@ -205,10 +205,13 @@ def parse_salary_to_k(text: str) -> tuple[int, int]:
         return int(round(num / 1000)) if num >= 1000 else int(round(num))
 
     # X千-Y万  / X万-Y万 / XK-YK / X-YK
-    m = re.search(r"(\d+(?:\.\d+)?)(千|万|k|K)?[-~—至到](\d+(?:\.\d+)?)(千|万|k|K)", t)
+    # 第一个数若带小数必须紧跟单位（"1.2万-2万"合法）；否则整数即可。
+    # 这样编号列表"3. 15-25K"不会被粘成"3.15-25K"而把下限解析成 3。
+    m = re.search(
+        r"(?:(\d+\.\d+)(千|万|k|K)|(\d+)(千|万|k|K)?)\s*[-~—至到]\s*(\d+(?:\.\d+)?)(千|万|k|K)", t)
     if m:
-        lo = _to_k(float(m.group(1)), m.group(2) or "")
-        hi = _to_k(float(m.group(3)), m.group(4) or "")
+        lo = _to_k(float(m.group(1) or m.group(3)), (m.group(2) or m.group(4)) or "")
+        hi = _to_k(float(m.group(5)), m.group(6) or "")
         if lo and hi:
             return (min(lo, hi), max(lo, hi))
     # 单个 X万 / X千 / XK
