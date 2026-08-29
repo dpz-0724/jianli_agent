@@ -357,12 +357,15 @@ function renderDashboard(d){
   const sc=d.stage_counts||{};
   const cell=(n,label,color,stage)=>`<div class="funnel-cell" onclick="filterStage('${stage}')" ><b style="color:${color}">${n}</b><span>${label}</span></div>`;
   const follow=d.follow_ups||[];
+  const today=new Date().toISOString().slice(0,10);
   const followHtml = follow.length ? follow.map(f=>{
-    const stgCls=f.stage==='INTERVIEW'?'PASS':(f.stage==='TO_CONTACT'?'REVIEW':'');
+    const due=f.next_follow_up_at||'';
+    const overdue = due && due<=today;
     return `<div class="follow-item" onclick="openCandidateFromDash(${f.job_id},${f.job_candidate_id})">
       <div class="avatar ${avClass(f.assessment_status)}">${(f.name||'?')[0]}</div>
       <div class="fi"><div class="fn">${f.name} <span class="mut" style="font-weight:400">${f.title||''}</span></div>
         <div class="fm">${f.job_title} · ${f.location||''} · ${f.education||''}${f.age?(' · '+f.age+'岁'):''}</div></div>
+      ${due?`<span class="stag" style="background:${overdue?'var(--red-soft)':'#eef0f5'};color:${overdue?'var(--red)':'var(--sub)'}">${overdue?'⚠ ':''}${due.slice(5)}跟进</span>`:''}
       <span class="stag ${f.assessment_status}">${STATUS_CN[f.assessment_status]||''}</span>
       <span class="stag" style="background:var(--pri-soft);color:var(--pri)">${STAGE_CN[f.stage]||f.stage}</span>
     </div>`;
@@ -832,16 +835,25 @@ async function openDrawer(id){
       <div class="dsec"><h4>招聘流转</h4><div class="stage-btns">
         ${['TO_REVIEW','TALENT_POOL','TO_CONTACT','CONTACTED','INTERVIEW','REJECTED'].map(s=>`<button class="stage-btn ${c.stage===s?'cur':''}" onclick="drawerStage(${c.id},'${s}')">${STAGE_CN[s]}</button>`).join('')}
       </div></div>
-      <div class="dsec"><h4>备注</h4>
-        <textarea class="note-area" id="dNote" placeholder="记录沟通要点、面试时间等…">${c.note||''}</textarea>
-        <button class="btn btn-pri btn-sm" style="margin-top:9px" onclick="saveNote(${c.id})">保存备注</button>
+      <div class="dsec"><h4>备注与跟进</h4>
+        <textarea class="note-area" id="dNote" placeholder="记录沟通要点、面试反馈等…">${c.note||''}</textarea>
+        <div style="display:flex;gap:9px;align-items:center;margin-top:9px">
+          <label style="font-size:12px;color:var(--mut);white-space:nowrap">下次跟进</label>
+          <input type="date" id="dFollow" value="${(c.next_follow_up_at||'').slice(0,10)}" style="border:1px solid var(--line2);border-radius:7px;padding:6px 10px;font-size:13px;font-family:inherit;outline:none">
+          <button class="btn btn-pri btn-sm" onclick="saveNote(${c.id})">保存</button>
+        </div>
       </div>
       ${tl?`<div class="dsec"><h4>操作记录</h4><div class="timeline">${tl}</div></div>`:''}
     </div>`;
 }
 function closeDrawer(){ $('drawer').classList.remove('show'); $('drawerMask').classList.remove('show'); }
 async function drawerStage(id,stage){ await setCandidateStage(id,stage); openDrawer(id); }
-async function saveNote(id){ await api(`/api/candidates/${id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({note:$('dNote').value})}); toast('备注已保存'); const c=candidates.find(x=>x.id===id); if(c)c.note=$('dNote').value; }
+async function saveNote(id){
+  const note=$('dNote').value;
+  const follow=$('dFollow')?.value||'';
+  await api(`/api/candidates/${id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({note,next_follow_up_at:follow})});
+  toast('已保存'); const c=candidates.find(x=>x.id===id); if(c)c.note=note;
+}
 
 // ================= create =================
 function openCreate(){ $('createMask').classList.add('show'); }

@@ -274,6 +274,7 @@ def _serialize_candidate(r: dict, *, detail: bool = False) -> dict:
         "reasons": r.get("reasons", [])[:8],
         "stage": r.get("stage") or "TO_REVIEW",
         "note": r.get("note", ""),
+        "next_follow_up_at": r.get("next_follow_up_at") or "",
         "has_resume": bool(r.get("full_text")),
     }
     if detail:
@@ -367,12 +368,16 @@ def api_candidate_detail(job_candidate_id: int):
 def api_update_candidate(job_candidate_id: int, payload: dict = Body(...)):
     stage = payload.get("stage")
     note = payload.get("note")
+    next_follow = payload.get("next_follow_up_at")
     try:
-        db.update_job_candidate(job_candidate_id, stage=stage, note=note, actor="web")
+        db.update_job_candidate(job_candidate_id, stage=stage, note=note,
+                                next_follow_up_at=next_follow, actor="web")
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
     if stage:
         db.add_follow_up(job_candidate_id, action=f"STAGE:{stage}", note=note or "", actor="web")
+    elif note is not None and not next_follow:
+        db.add_follow_up(job_candidate_id, action="NOTE", note=note, actor="web")
     return {"ok": True}
 
 

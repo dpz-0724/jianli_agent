@@ -195,10 +195,11 @@ class CandidateMixin:
                 """
             ).fetchall()
 
-            # 该跟进的候选人：待联系 / 已联系 / 约面（按最近更新排序）
+            # 该跟进的候选人：待联系 / 已联系 / 约面（到期的优先，其次按紧急度+最近更新）
             follow_rows = conn.execute(
                 """
                 SELECT jc.id AS job_candidate_id, jc.job_id, jc.stage, jc.note, jc.updated_at,
+                       jc.next_follow_up_at,
                        j.title AS job_title,
                        c.name, c.title, c.location, c.education, c.age, c.expected_salary, c.activity,
                        a.status AS assessment_status, a.fit_score
@@ -209,9 +210,12 @@ class CandidateMixin:
                     SELECT a2.id FROM assessments a2 WHERE a2.job_candidate_id=jc.id ORDER BY a2.id DESC LIMIT 1
                 )
                 WHERE j.status <> 'ARCHIVED' AND jc.stage IN ('TO_CONTACT','CONTACTED','INTERVIEW')
-                ORDER BY CASE jc.stage WHEN 'INTERVIEW' THEN 0 WHEN 'TO_CONTACT' THEN 1 ELSE 2 END,
+                ORDER BY
+                         CASE WHEN jc.next_follow_up_at IS NOT NULL AND jc.next_follow_up_at<>'' AND jc.next_follow_up_at<=? THEN 0 ELSE 1 END,
+                         CASE jc.stage WHEN 'INTERVIEW' THEN 0 WHEN 'TO_CONTACT' THEN 1 ELSE 2 END,
                          jc.updated_at DESC LIMIT 50
-                """
+                """,
+                (now_iso()[:10],),
             ).fetchall()
 
         return {
