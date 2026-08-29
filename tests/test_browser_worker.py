@@ -34,6 +34,7 @@ class FakeBot:
         on_page=None,
         filters=None,
         fetch_detail=False,
+        max_detail=25,
     ):
         self.thread_id = threading.get_ident()
         result = []

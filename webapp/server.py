@@ -201,6 +201,7 @@ def api_list_jobs():
 def api_start(job_id: int, payload: dict = Body(default={})):
     target = int(payload.get("target_count") or 100)
     fetch_detail = bool(payload.get("fetch_detail", False))
+    max_detail = max(1, min(int(payload.get("max_detail") or 20), 50))
     target = max(10, min(target, 500))
     job = db.get_job(job_id)
     if not job:
@@ -225,7 +226,7 @@ def api_start(job_id: int, payload: dict = Body(default={})):
     worker.submit("SEARCH", {
         "run_id": run_id, "query": query, "max_pages": max_pages,
         "max_count": target, "start_page": 1, "filters": filters,
-        "fetch_detail": fetch_detail,
+        "fetch_detail": fetch_detail, "max_detail": max_detail,
     })
     return {"ok": True, "run_id": run_id, "query": query, "max_pages": max_pages, "target": target}
 

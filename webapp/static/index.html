@@ -360,8 +360,9 @@ function renderJobView(){
           ${activeRun
             ? '<button class="btn btn-danger" onclick="doStop()">停止本轮</button>'
             : `<span style="display:inline-flex;align-items:center;gap:8px;background:#f8f9fc;border:1px solid var(--line);border-radius:8px;padding:6px 12px">
-                 <input id="targetN" type="number" value="60" min="10" max="500" style="width:64px;border:1px solid var(--line2);border-radius:6px;padding:5px 8px;font-size:13px"> <span style="font-size:12px;color:var(--mut)">人</span>
-                 <label style="display:inline-flex;align-items:center;gap:5px;font-size:12.5px;color:var(--sub);cursor:pointer;margin-left:6px"><input type="checkbox" id="deepMode" checked style="accent-color:var(--pri)"> 深度筛选<small style="color:var(--mut)">逐人读简历</small></label>
+                 <input id="targetN" type="number" value="60" min="10" max="500" style="width:60px;border:1px solid var(--line2);border-radius:6px;padding:5px 8px;font-size:13px"> <span style="font-size:12px;color:var(--mut)">人</span>
+                 <label style="display:inline-flex;align-items:center;gap:5px;font-size:12.5px;color:var(--sub);cursor:pointer;margin-left:6px" title="逐人打开完整简历读取工作经历/项目/证书，匹配更准；但消耗智联账号的每日简历查看额度"><input type="checkbox" id="deepMode" style="accent-color:var(--pri)"> 深度读简历</label>
+                 <input id="detailN" type="number" value="20" min="1" max="50" style="width:52px;border:1px solid var(--line2);border-radius:6px;padding:5px 8px;font-size:13px" title="深读人数上限（省额度）"> <span style="font-size:11px;color:var(--mut)">份</span>
                </span>
                <button class="btn btn-pri" onclick="startRecruit()">▶ 开始筛选</button>`}
         </div>
@@ -603,10 +604,11 @@ async function batchStage(stage){
 // ================= recruit / polling =================
 async function startRecruit(){
   const target = parseInt($('targetN')?.value||'60');
-  const deep = $('deepMode')?.checked ?? true;
-  const r=await api(`/api/jobs/${curJobId}/start`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target_count:target,fetch_detail:deep})});
+  const deep = $('deepMode')?.checked ?? false;
+  const detailN = parseInt($('detailN')?.value||'20');
+  const r=await api(`/api/jobs/${curJobId}/start`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target_count:target,fetch_detail:deep,max_detail:detailN})});
   if(!r.ok){toast(r.error||'启动失败');return}
-  toast(deep?'已开始深度筛选（逐人读简历）':'已开始筛选');
+  toast(deep?`已开始筛选（深度读前${detailN}份简历）`:'已开始筛选');
   $('nTarget').textContent=target;
   const lc=$('liveCard'); lc.classList.add('show'); lc.classList.remove('collapsed'); $('liveCar').textContent='▾ 收起';
   running=true; startPolling();

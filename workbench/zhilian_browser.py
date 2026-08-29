@@ -31,6 +31,7 @@ class ProductCandidateSearcher(CandidateSearcher):
         super().__init__(config or {}, db)
         self.active_browser_mode = ""
         self._last_launch_error = ""
+        self._resume_quota_exhausted = False
 
     @staticmethod
     def _attempts(mode: str, custom_path: str = "") -> list[tuple[str, dict[str, Any]]]:
@@ -240,36 +241,58 @@ class ProductCandidateSearcher(CandidateSearcher):
 
     # ---- 完整简历详情抓取（"会看简历"的核心）----
 
-    def _open_resume_modal(self, card, timeout: int = 6000) -> bool:
-        """点击候选人卡片打开简历弹窗。返回是否成功打开。"""
+    def _extract_resume_text(self) -> str:
+        """取当前简历弹窗正文（不等待）。"""
+        try:
+            return self.page.evaluate(
+                """() => {
+                  const el = document.querySelector('.resume-content-new')
+                    || document.querySelector('.resume-detail')
+                    || document.querySelector('.new-resume-detail')
+                    || document.querySelector('.km-modal__body');
+                  return el ? (el.innerText || '') : '';
+                }""") or ""
+        except Exception:
+            return ""
+
+    def _open_resume_modal(self, card, timeout: int = 9000) -> bool:
+        """点击候选人卡片打开简历弹窗，并**轮询直到正文真正加载**（外壳先出现、内容异步填充）。
+        返回是否成功拿到有内容的简历。"""
+        import time as _time
         try:
             target = card.query_selector(".talent-basic-info__name") or card
             target.click()
-            self.page.wait_for_selector(".resume-content-new, .resume-detail, .new-resume-detail",
-                                        timeout=timeout)
-            return True
         except Exception:
             return False
+        # 先等外壳出现
+        try:
+            self.page.wait_for_selector(".resume-content-new, .resume-detail, .new-resume-detail",
+                                        timeout=timeout)
+        except Exception:
+            pass
+        # 再轮询正文加载（外壳出现≠内容就绪）
+        deadline = _time.time() + timeout / 1000
+        while _time.time() < deadline:
+            if len(self._extract_resume_text()) > 120:
+                return True
+            try:
+                self.page.wait_for_timeout(300)
+            except Exception:
+                break
+        return len(self._extract_resume_text()) > 40
 
     def _scrape_open_resume(self) -> str:
         """抓取当前打开的简历弹窗全文（滚动触发懒加载后取全文）。"""
         try:
-            # 滚动简历容器，触发懒加载全部内容
             self.page.evaluate(
                 """() => {
                   const c = document.querySelector('.resume-detail, .new-resume-detail, .km-modal__body');
                   if (c) { c.scrollTop = c.scrollHeight; }
                 }""")
             self.page.wait_for_timeout(500)
-            return self.page.evaluate(
-                """() => {
-                  const el = document.querySelector('.resume-content-new')
-                    || document.querySelector('.resume-detail')
-                    || document.querySelector('.km-modal__body');
-                  return el ? (el.innerText || '') : '';
-                }""") or ""
         except Exception:
-            return ""
+            pass
+        return self._extract_resume_text()
 
     def _close_resume_modal(self) -> None:
         """关闭简历弹窗（ESC 优先，兜底点关闭按钮），保证回到列表页。"""
@@ -290,15 +313,20 @@ class ProductCandidateSearcher(CandidateSearcher):
             pass
 
     def scrape_candidate_detail(self, card) -> str:
-        """对单张卡片：打开简历弹窗→抓全文→关闭。失败返回空串（不影响卡片数据）。"""
-        if not self._open_resume_modal(card):
+        """对单张卡片：打开简历弹窗→抓全文→关闭。失败返回空串（不影响卡片数据）。
+        检测到'查看简历次数已用完'时置额度耗尽标志并返回空（外层据此停止深读）。"""
+        opened = self._open_resume_modal(card)
+        if not opened:
             self._close_resume_modal()
             return ""
         try:
             text = self._scrape_open_resume()
         finally:
             self._close_resume_modal()
-        # 等列表恢复稳定
+        # 检测简历查看额度耗尽：抓到的是提示语而非简历
+        if text and ("次数已用完" in text or "开通权益" in text or "查看简历次数" in text):
+            self._resume_quota_exhausted = True
+            return ""
         try:
             self.page.wait_for_timeout(300)
         except Exception:
@@ -318,12 +346,15 @@ class ProductCandidateSearcher(CandidateSearcher):
         control: Callable[[str, int, int], None] | None = None,
         filters: dict[str, Any] | None = None,
         fetch_detail: bool = False,
+        max_detail: int = 25,
     ) -> list[dict[str, Any]]:
         def check(stage: str, page_no: int, count: int) -> None:
             if control:
                 control(stage, page_no, count)
 
         check("before_search", 0, 0)
+        self._resume_quota_exhausted = False  # 每轮重置（额度是按天的，但本轮内一旦耗尽即停）
+        detail_count = 0
         self.do_search(keyword)
         # 源头筛选：设置城市/学历/经验，让搜索结果本身就匹配画像
         if filters:
@@ -373,13 +404,17 @@ class ProductCandidateSearcher(CandidateSearcher):
                 if len(candidates) >= max_count:
                     break
             # 深度筛选：逐人打开简历弹窗抓全文（让智能体真正"看简历"）
-            if fetch_detail and page_new:
+            # 额度保护：查看完整简历消耗智联每日额度——一旦耗尽或达本轮上限即停，不浪费
+            if fetch_detail and page_new and not self._resume_quota_exhausted and detail_count < max_detail:
                 for cand, cidx in zip(page_new, page_idx):
+                    if self._resume_quota_exhausted or detail_count >= max_detail:
+                        break
                     check("before_detail", page_no, len(candidates))
                     try:
                         fresh = self.page.query_selector_all(selector)
                         if cidx < len(fresh):
                             text = self.scrape_candidate_detail(fresh[cidx])
+                            detail_count += 1
                             if text and len(text) > len(cand.get("text", "") or ""):
                                 cand["full_text"] = text
                     except Exception:

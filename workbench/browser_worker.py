@@ -286,6 +286,7 @@ class BrowserWorker:
                     candidates=page_candidates,
                 )
 
+            fetch_detail = bool(payload.get("fetch_detail", False))
             candidates = bot.search_and_scrape_controlled(
                 query,
                 max_pages=max_pages,
@@ -298,16 +299,24 @@ class BrowserWorker:
                     bot, command.request_id, run_id, stage, page_no, count
                 ),
                 filters=payload.get("filters") or None,
-                fetch_detail=bool(payload.get("fetch_detail", False)),
+                fetch_detail=fetch_detail,
+                max_detail=int(payload.get("max_detail", 25) or 25),
             )
             self._stop_trace(bot)
+            quota_hit = bool(getattr(bot, "_resume_quota_exhausted", False))
+            n_resume = sum(1 for c in candidates if c.get("full_text"))
+            msg = f"搜索完成，共发现 {len(candidates)} 名候选人"
+            if fetch_detail:
+                msg += f"，已读取 {n_resume} 份完整简历"
+                if quota_hit:
+                    msg += "（智联今日简历查看额度已用完，其余按列表信息匹配）"
             self._emit(
                 "COMPLETED",
                 command.request_id,
                 run_id=run_id,
                 candidates=candidates,
                 count=len(candidates),
-                message=f"搜索完成，共发现 {len(candidates)} 名候选人",
+                message=msg,
             )
         except SearchCancelled as error:
             if bot is not None:
