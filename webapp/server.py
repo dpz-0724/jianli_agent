@@ -306,6 +306,22 @@ _SORT_KEYS = {
 }
 
 
+@app.post("/api/jobs/{job_id}/archive")
+def api_archive_job(job_id: int):
+    if not db.get_job(job_id):
+        return JSONResponse({"ok": False, "error": "岗位不存在"}, status_code=404)
+    db.update_job(job_id, status="ARCHIVED")
+    return {"ok": True}
+
+
+@app.delete("/api/jobs/{job_id}")
+def api_delete_job(job_id: int):
+    if not db.get_job(job_id):
+        return JSONResponse({"ok": False, "error": "岗位不存在"}, status_code=404)
+    db.delete_job(job_id)
+    return {"ok": True}
+
+
 @app.get("/api/jobs/{job_id}")
 def api_job_detail(job_id: int):
     job = db.get_job(job_id)

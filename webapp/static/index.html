@@ -65,6 +65,9 @@
   .job-item.on{background:var(--pri-soft);border-color:#c5d4ff}
   .job-item .jt{font-size:13.5px;font-weight:600;display:flex;align-items:center;gap:7px}
   .job-item .jt .cnt{margin-left:auto;font-size:11px;color:var(--mut);background:#eef0f5;border-radius:10px;padding:1px 8px}
+  .job-item .jarch{display:none;font-size:11px;color:var(--mut);cursor:pointer;padding:0 3px;border-radius:4px;margin-left:4px}
+  .job-item:hover .jarch{display:inline}
+  .job-item .jarch:hover{color:var(--red);background:var(--red-soft)}
   .job-item.on .jt .cnt{background:#d3dfff;color:var(--pri)}
   .job-item .js{font-size:11px;color:var(--mut);margin-top:5px;display:flex;gap:8px;align-items:center}
   .mini-run{width:6px;height:6px;border-radius:50%;background:var(--green);animation:blink 1.2s infinite;display:inline-block}
@@ -403,7 +406,8 @@ function renderSidebar(){
   el.innerHTML='<div class="side-sec">我的岗位（'+jobs.length+'）</div>'+jobs.map(j=>{
     const run = (j.status==='RUNNING'||j.status==='NEED_LOGIN');
     return `<div class="job-item ${j.id===curJobId?'on':''}" onclick="selectJob(${j.id})">
-      <div class="jt">${run?'<span class="mini-run"></span>':''}${j.title}<span class="cnt">${j.candidate_count}</span></div>
+      <div class="jt">${run?'<span class="mini-run"></span>':''}${j.title}<span class="cnt">${j.candidate_count}</span>
+        <span class="jarch" title="归档岗位" onclick="archiveJob(event,${j.id})">✕</span></div>
       <div class="js"><span class="dot-p">${j.pass} 匹配</span><span class="dot-r">${j.review} 待复核</span></div>
     </div>`;
   }).join('');
@@ -585,6 +589,15 @@ function renderJobHeaderStats(){
   api(`/api/jobs/${curJobId}`).then(r=>{ if(r.ok){curJob=r.job; selectJobRefreshHeader(); }});
 }
 function selectJobRefreshHeader(){ renderSidebar(); }
+async function archiveJob(ev, id){
+  ev.stopPropagation();
+  const j = jobs.find(x=>x.id===id);
+  if(!confirm(`归档岗位「${j?j.title:id}」？\n候选人数据保留，仅从列表收起。`)) return;
+  await api(`/api/jobs/${id}/archive`, {method:'POST'});
+  toast('已归档');
+  await loadJobs();
+  if(curJobId===id) showDashboard();
+}
 
 // ================= candidates =================
 function bindTabs(){
