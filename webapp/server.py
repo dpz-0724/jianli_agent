@@ -34,6 +34,7 @@ from workbench.service import RecruitmentService  # noqa: E402
 from workbench.browser_worker import BrowserWorker  # noqa: E402
 from workbench.jd_analyzer import analyze_job  # noqa: E402
 from workbench.models import SearchPlan  # noqa: E402
+from workbench import license_mgr  # noqa: E402
 
 PREVIEW_PATH = default_data_dir() / "preview" / "latest.png"
 STATIC = Path(__file__).resolve().parent / "static"
@@ -44,6 +45,78 @@ db = WorkbenchDB()
 service = RecruitmentService(db)
 _events: "queue.Queue" = queue.Queue()
 worker = BrowserWorker(_events, hide_browser=True)  # 离屏有头：画面经截图流进网页
+
+
+# ---------------- 授权闸门（未激活只放行激活相关接口） ----------------
+_OPEN_PATHS = {"/api/health", "/api/machine_code", "/api/activate", "/activate"}
+
+
+def _activation_html() -> str:
+    mc = license_mgr.machine_fingerprint()
+    return """<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>简历智能体 · 激活</title>
+<style>
+body{margin:0;font-family:"Microsoft YaHei",system-ui,sans-serif;background:linear-gradient(135deg,#eef2ff,#f8fafc);display:flex;align-items:center;justify-content:center;min-height:100vh}
+.card{background:#fff;border-radius:16px;box-shadow:0 12px 40px rgba(30,41,82,.12);padding:40px 44px;width:520px;max-width:92vw}
+h1{font-size:22px;margin:0 0 4px;color:#1e293b} .sub{color:#64748b;font-size:13px;margin-bottom:24px}
+label{display:block;font-size:13px;color:#475569;margin:16px 0 6px;font-weight:600}
+.mc{font-family:Consolas,monospace;font-size:20px;letter-spacing:2px;color:#4f46e5;background:#eef2ff;padding:10px 14px;border-radius:8px;text-align:center;user-select:all}
+textarea{width:100%;box-sizing:border-box;height:78px;border:1px solid #cbd5e1;border-radius:8px;padding:10px;font-family:Consolas,monospace;font-size:12px;resize:vertical}
+button{margin-top:18px;width:100%;padding:12px;border:0;border-radius:8px;background:#4f46e5;color:#fff;font-size:15px;font-weight:600;cursor:pointer}
+button:hover{background:#4338ca} .msg{margin-top:14px;font-size:13px;min-height:18px;text-align:center}
+.ok{color:#059669}.err{color:#dc2626}.tip{color:#94a3b8;font-size:12px;margin-top:22px;line-height:1.6}
+</style></head><body><div class="card">
+<h1>简历智能体</h1><div class="sub">请输入授权码以激活使用</div>
+<label>本机机器码（请把此码发给提供方换取授权码）</label>
+<div class="mc">__MC__</div>
+<label>授权码</label>
+<textarea id="code" placeholder="粘贴提供方给你的授权码"></textarea>
+<button onclick="doActivate()">激 活</button>
+<div class="msg" id="msg"></div>
+<div class="tip">授权码绑定本机与有效期，不能复制到其他电脑。<br>如需授权，请联系软件提供方，并把上方机器码发给对方。</div>
+</div>
+<script>
+async function doActivate(){
+  const code=document.getElementById('code').value.trim();
+  const msg=document.getElementById('msg');
+  if(!code){msg.className='msg err';msg.textContent='请粘贴授权码';return;}
+  msg.className='msg';msg.textContent='激活中…';
+  try{
+    const r=await fetch('/api/activate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code})});
+    const d=await r.json();
+    if(d.ok){msg.className='msg ok';msg.textContent=d.message||'激活成功';setTimeout(()=>location.href='/',800);}
+    else{msg.className='msg err';msg.textContent=d.error||'激活失败';}
+  }catch(e){msg.className='msg err';msg.textContent='网络错误';}
+}
+</script></body></html>""".replace("__MC__", mc)
+
+
+@app.middleware("http")
+async def _activation_gate(request, call_next):
+    path = request.url.path
+    if license_mgr.is_activated() or path in _OPEN_PATHS or path.startswith("/static"):
+        return await call_next(request)
+    if path == "/" or not path.startswith("/api"):
+        return HTMLResponse(_activation_html())
+    return JSONResponse({"ok": False, "error": "软件未激活，请先输入授权码", "need_activation": True}, status_code=403)
+
+
+@app.get("/api/machine_code")
+def api_machine_code():
+    return {"ok": True, "machine_code": license_mgr.machine_fingerprint()}
+
+
+@app.post("/api/activate")
+def api_activate(payload: dict = Body(...)):
+    code = str(payload.get("code") or "")
+    ok, msg = license_mgr.activate(code)
+    return ({"ok": True, "message": msg} if ok
+            else JSONResponse({"ok": False, "error": msg}, status_code=400))
+
+
+@app.get("/api/activation")
+def api_activation():
+    return {"ok": True, **license_mgr.current_activation()}
 
 
 # ---------------- 运行态（内存） ----------------

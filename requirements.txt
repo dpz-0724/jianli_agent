@@ -1,2 +1,8 @@
+# 网页版（简历智能体）运行依赖
+fastapi>=0.110
+uvicorn>=0.29
 playwright==1.55.0
-PySide6==6.8.3
+cryptography>=42.0
+
+# 旧版 Qt 桌面端（可选，网页版不需要）
+# PySide6==6.8.3

@@ -28,6 +28,11 @@ strings/
 *.sqlite
 config.ini
 config2.ini
+
+# 卖方授权私钥（绝不分发/提交）
+tools/_vendor_private.key
+_vendor_private.key
+交付/
 *.log
 chrome_profile/
 RecruitmentWorkbench/
