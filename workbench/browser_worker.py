@@ -289,17 +289,27 @@ class BrowserWorker:
             fetch_detail = bool(payload.get("fetch_detail", False))
             # 深读额度是稀缺的：评分函数让每页先按我方匹配分排序，深读优先给高分者
             score_fn = None
+            detail_filter = None
             if fetch_detail:
                 try:
                     from .database import WorkbenchDB
                     from .service import RecruitmentService
-                    from .evaluation import assess_candidate
+                    from .evaluation import assess_candidate, AssessmentStatus
                     _db = WorkbenchDB()
                     _profile = RecruitmentService(_db).load_profile(int(payload.get("job_id") or 0))
                     if _profile is not None:
                         score_fn = lambda c: assess_candidate(c, _profile).fit_score
+                        # 两段漏斗：硬冲突（学历/经验等明确不达标）的人不浪费看简历额度，
+                        # 只对"粗筛没被杀掉"的人深读全文来最终定夺（HR 视角：先粗筛后精读）
+                        def _detail_filter(c):
+                            try:
+                                return assess_candidate(c, _profile).status != AssessmentStatus.CONFLICT
+                            except Exception:
+                                return True
+                        detail_filter = _detail_filter
                 except Exception:
                     score_fn = None
+                    detail_filter = None
             candidates = bot.search_and_scrape_controlled(
                 query,
                 max_pages=max_pages,
@@ -315,6 +325,7 @@ class BrowserWorker:
                 fetch_detail=fetch_detail,
                 max_detail=int(payload.get("max_detail", 25) or 25),
                 score_fn=score_fn,
+                detail_filter=detail_filter,
             )
             self._stop_trace(bot)
             quota_hit = bool(getattr(bot, "_resume_quota_exhausted", False))

@@ -402,6 +402,7 @@ class ProductCandidateSearcher(CandidateSearcher):
         fetch_detail: bool = False,
         max_detail: int = 25,
         score_fn: Callable[[dict], float] | None = None,
+        detail_filter: Callable[[dict], bool] | None = None,
     ) -> list[dict[str, Any]]:
         def check(stage: str, page_no: int, count: int) -> None:
             if control:
@@ -482,6 +483,13 @@ class ProductCandidateSearcher(CandidateSearcher):
                 for cand, cidx in ordered:
                     if self._resume_quota_exhausted or detail_count >= max_detail:
                         break
+                    # 两段漏斗门禁：硬冲突（明确不达标）的人跳过，不浪费看简历额度
+                    if detail_filter is not None:
+                        try:
+                            if not detail_filter(cand):
+                                continue
+                        except Exception:
+                            pass
                     check("before_detail", page_no, len(candidates))
                     try:
                         fresh = self.page.query_selector_all(selector)
@@ -552,23 +560,27 @@ def open_candidate_contact(resume_number: str, keyword: str, filters: dict | Non
                     idx = ordered.index(resume_number)
                     cards = page.query_selector_all(selector)
                     if idx < len(cards):
-                        target = cards[idx].query_selector(".talent-basic-info__name") or cards[idx]
                         try:
-                            target.scroll_into_view_if_needed()
+                            cards[idx].scroll_into_view_if_needed()
                         except Exception:
                             pass
+                        # 用验证过的方式打开简历弹窗（点击+等正文加载），确保真的打开了本人界面
                         try:
-                            target.click()
-                            found = True
+                            found = bool(bot._open_resume_modal(cards[idx]))
                         except Exception:
-                            pass
+                            found = True  # 点击已发出即算
                         break
                 if not bot._goto_next_page():
                     break
-            if not found:
-                # 没自动定位到（可能结果变动/候选人下架）：停留在搜索结果页，用户可手动找
+            # 打开后把窗口提到最前，确保用户看到本人简历卡（含打招呼/打电话按钮）
+            try:
+                page.bring_to_front()
+            except Exception:
+                pass
+            if found:
+                # 再多等一会让简历正文渲染完整
                 try:
-                    page.bring_to_front()
+                    page.wait_for_timeout(1500)
                 except Exception:
                     pass
             # 无论是否定位到，都保持窗口打开（用户可自行在智联里操作），直到用户关窗
