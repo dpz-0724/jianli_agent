@@ -350,6 +350,7 @@ def _serialize_candidate(r: dict, *, detail: bool = False) -> dict:
         "note": r.get("note", ""),
         "next_follow_up_at": r.get("next_follow_up_at") or "",
         "has_resume": bool(r.get("full_text")),
+        "platform_uid": r.get("platform_uid") or "",
     }
     if detail:
         item["evidence"] = r.get("evidence", {})
@@ -463,7 +464,35 @@ def api_candidate_detail(job_candidate_id: int):
     return {"ok": True, "candidate": item}
 
 
-@app.patch("/api/candidates/{job_candidate_id}")
+@app.post("/api/candidates/{job_candidate_id}/contact")
+def api_contact_candidate(job_candidate_id: int):
+    """在可见的、已登录的智联窗口里打开该候选人的简历卡（含打招呼/打电话按钮），供联系。
+    不自动发消息（避免封号），只是把本人简历卡调出来给招聘人看。"""
+    r = db.get_job_candidate(job_candidate_id)
+    if not r:
+        return JSONResponse({"ok": False, "error": "候选人不存在"}, status_code=404)
+    rn = (r.get("platform_uid") or "").strip()
+    if not rn:
+        return JSONResponse({"ok": False, "error": "该候选人是旧数据，缺少标识，请重新筛选一次以抓取联系方式"}, status_code=400)
+    job = db.get_job(r.get("job_id")) or {}
+    keyword = job.get("keyword") or job.get("title") or ""
+    # 用和当初筛选相同的筛选条件重搜，才能重新定位到本人（否则顺序全乱、开错人）
+    try:
+        from workbench.jd_analyzer import analyze_job
+        analysis = analyze_job(job.get("jd", ""), keyword)
+        filters = {
+            "city": (analysis.locations[0] if analysis.locations else ""),
+            "min_education": analysis.min_education or "",
+            "min_experience_years": analysis.min_experience_years or 0,
+        }
+    except Exception:
+        filters = {}
+    try:
+        from workbench.zhilian_browser import open_candidate_contact
+        open_candidate_contact(rn, keyword, filters=filters)
+        return {"ok": True, "message": f"正在打开 {r.get('name','候选人')} 的智联简历卡，请在弹出的窗口里点「打招呼」联系"}
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": f"打开失败：{e}"}, status_code=500)
 def api_update_candidate(job_candidate_id: int, payload: dict = Body(...)):
     stage = payload.get("stage")
     note = payload.get("note")

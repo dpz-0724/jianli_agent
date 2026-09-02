@@ -333,7 +333,7 @@ let runTimer = null, picTimer = null, pollTimer = null;
 let running = false;
 
 const $ = id => document.getElementById(id);
-function toast(m){const t=$('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2800)}
+function toast(m,ms){const t=$('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),ms||2800)}
 async function api(url,opts){const r=await fetch(url,opts);if(r.status===200&&r.headers.get('content-type')?.includes('csv'))return r;return r.json()}
 const STAGE_CN={NEW:"新入库",TO_REVIEW:"待评估",TO_CONTACT:"待联系",CONTACTED:"已联系",INTERVIEW:"约面",OFFER:"已发offer",HIRED:"已入职",REJECTED:"已淘汰",TALENT_POOL:"人才库"};
 const STATUS_CN={PASS:"匹配",REVIEW:"待复核",CONFLICT:"不符"};
@@ -848,6 +848,11 @@ async function openDrawer(id){
       ${c.skills?`<div class="dsec"><h4>技能标签</h4><div class="prof-tags">${c.skills.split(/[,，、]/).filter(Boolean).slice(0,10).map(s=>`<span class="tag">${s.trim()}</span>`).join('')}</div></div>`:''}
       <div class="dsec"><h4>匹配理由</h4><ul class="reason-list">${reasonLi}</ul></div>
       ${c.parsed_resume?renderStructuredResume(c.parsed_resume):renderResume(c.full_text)}
+      <div class="dsec"><h4>联系本人</h4>
+        <button class="btn btn-pri" style="width:100%" onclick="contactCandidate(${c.id},${c.platform_uid?'true':'false'})">📞 联系TA（在智联里打开简历卡）</button>
+        ${c.platform_uid?'':'<div class="mut" style="font-size:11px;margin-top:6px">该候选人是旧数据缺少标识，重新筛选一次后可联系</div>'}
+        <div class="mut" style="font-size:11px;margin-top:6px">会弹出一个已登录的智联窗口，自动定位到TA的简历卡，点「打招呼」即可沟通（不自动发消息）</div>
+      </div>
       <div class="dsec"><h4>招聘流转</h4><div class="stage-btns">
         ${['TO_REVIEW','TALENT_POOL','TO_CONTACT','CONTACTED','INTERVIEW','REJECTED'].map(s=>`<button class="stage-btn ${c.stage===s?'cur':''}" onclick="drawerStage(${c.id},'${s}')">${STAGE_CN[s]}</button>`).join('')}
       </div></div>
@@ -876,10 +881,15 @@ async function saveNote(id){
 }
 function copyGreeting(){
   const t=$('greetBox')?.innerText||'';
-  if(!t)return;
-  navigator.clipboard.writeText(t).then(()=>toast('话术已复制')).catch(()=>{ 
+  if(!t)return;  navigator.clipboard.writeText(t).then(()=>toast('话术已复制')).catch(()=>{ 
     const ta=document.createElement('textarea'); ta.value=t; document.body.appendChild(ta); ta.select();
     document.execCommand('copy'); document.body.removeChild(ta); toast('话术已复制'); });
+}
+async function contactCandidate(id, hasUid){
+  if(!hasUid){ toast('该候选人缺少标识，请重新筛选一次'); return; }
+  toast('正在打开智联简历卡…', 3000);
+  const r = await api(`/api/candidates/${id}/contact`, {method:'POST'});
+  if(r && r.ok){ toast(r.message||'已打开，请在智联窗口点「打招呼」', 4000); }
 }
 
 // ================= create =================

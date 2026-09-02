@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import sys
+import json
 from pathlib import Path
 from typing import Any, Callable
 
@@ -32,6 +33,8 @@ class ProductCandidateSearcher(CandidateSearcher):
         self.active_browser_mode = ""
         self._last_launch_error = ""
         self._resume_quota_exhausted = False
+        self._api_by_name: dict[str, list[str]] = {}
+        self._api_ordered: list[str] = []
 
     @staticmethod
     def _attempts(mode: str, custom_path: str = "") -> list[tuple[str, dict[str, Any]]]:
@@ -82,6 +85,7 @@ class ProductCandidateSearcher(CandidateSearcher):
             common["args"].append("--window-position=-2400,-2400")
 
         errors: list[str] = []
+        healed = False
         for mode, override in self._attempts(requested, custom_path):
             if mode == "custom" and not Path(custom_path).is_file():
                 errors.append(f"custom: 文件不存在 {custom_path}")
@@ -98,6 +102,21 @@ class ProductCandidateSearcher(CandidateSearcher):
             except Exception as error:
                 errors.append(f"{mode}: {error}")
                 self._context = None
+                # 自愈：managed 登录 profile 损坏（如进程被强杀）会导致启动即崩。
+                # 备份坏 profile、重建空目录重试一次——用户只需重新登录，不会卡死。
+                if mode == "managed" and not healed:
+                    healed = True
+                    try:
+                        import shutil, time as _t
+                        backup = profile.with_name(profile.name + "_broken_" + str(int(_t.time())))
+                        shutil.move(str(profile), str(backup))
+                        profile.mkdir(parents=True, exist_ok=True)
+                        self._context = self._pw.chromium.launch_persistent_context(str(profile), **kwargs)
+                        self.active_browser_mode = mode
+                        break
+                    except Exception as error2:
+                        errors.append(f"{mode}(自愈重试): {error2}")
+                        self._context = None
 
         if self._context is None:
             try:
@@ -333,6 +352,41 @@ class ProductCandidateSearcher(CandidateSearcher):
             pass
         return text or ""
 
+    def _attach_resume_list_listener(self) -> None:
+        """拦截搜索接口 /talent/search/list，拿到每个候选人的 resumeNumber。
+        智联候选人卡片是纯 JS 按钮、DOM 里没有主页链接，唯一标识只在接口 JSON 里。
+        存两份：_api_by_name（按姓名→联系本人）、_api_ordered（按顺序→定位第几张卡）。"""
+        def _on_response(resp) -> None:
+            try:
+                if "talent/search/list" in resp.url and "json" in resp.headers.get("content-type", ""):
+                    data = json.loads(resp.body())
+                    lst = (data.get("data") or {}).get("list") or []
+                    byname: dict[str, list[str]] = {}
+                    ordered: list[str] = []
+                    for item in lst:
+                        name = (item.get("userName") or "").strip()
+                        rn = (item.get("resumeNumber") or "").strip()
+                        if rn:
+                            ordered.append(rn)
+                        if name and rn:
+                            byname.setdefault(name, []).append(rn)
+                    if ordered:
+                        self._api_by_name = byname
+                        self._api_ordered = ordered
+            except Exception:
+                pass
+        self.page.on("response", _on_response)
+
+    def _take_resume_number(self, name: str) -> str:
+        """按姓名取一个 resumeNumber（同名按出现顺序消耗）。"""
+        name = (name or "").strip()
+        if not name:
+            return ""
+        queue = self._api_by_name.get(name)
+        if queue:
+            return queue.pop(0)
+        return ""
+
     def search_and_scrape_controlled(
         self,
         keyword: str,
@@ -356,6 +410,12 @@ class ProductCandidateSearcher(CandidateSearcher):
         check("before_search", 0, 0)
         self._resume_quota_exhausted = False  # 每轮重置（额度是按天的，但本轮内一旦耗尽即停）
         detail_count = 0
+        # 拦搜索接口 /talent/search/list，拿到每个候选人的 resumeNumber（联系本人要靠它）
+        self._api_by_name: dict[str, list[str]] = {}
+        try:
+            self._attach_resume_list_listener()
+        except Exception:
+            pass
         self.do_search(keyword)
         # 源头筛选：设置城市/学历/经验，让搜索结果本身就匹配画像
         if filters:
@@ -397,6 +457,11 @@ class ProductCandidateSearcher(CandidateSearcher):
                 if not key or key in seen:
                     continue
                 seen.add(key)
+                # 挂上 resumeNumber（联系本人的唯一标识）
+                rn = self._take_resume_number(candidate.get("name"))
+                if rn:
+                    candidate["resume_number"] = rn
+                    candidate["platform_uid"] = rn
                 candidates.append(candidate)
                 page_new.append(candidate)
                 page_idx.append(idx)
@@ -425,6 +490,9 @@ class ProductCandidateSearcher(CandidateSearcher):
                             detail_count += 1
                             if text and len(text) > len(cand.get("text", "") or ""):
                                 cand["full_text"] = text
+                            # 深读间隔抖动：查看完整简历是最耗额度、最易触发风控的动作，模拟真人节奏
+                            import random as _rnd
+                            self.page.wait_for_timeout(1200 + _rnd.randint(0, 1500))
                     except Exception:
                         pass
             if on_page and page_new:
@@ -435,3 +503,83 @@ class ProductCandidateSearcher(CandidateSearcher):
             if len(candidates) >= max_count or not self._goto_next_page():
                 break
         return candidates
+
+
+_SEARCH_URL = "https://rd6.zhaopin.com/app/search"
+
+
+def open_candidate_contact(resume_number: str, keyword: str, filters: dict | None = None, max_pages: int = 8) -> None:
+    """在【可见、已登录】的智联窗口里打开指定候选人的简历卡（上面有"打招呼/打电话"按钮），
+    供招聘人直接联系本人。智联没有干净的主页链接（详情要当次有效的加密串 resumeK/resumeT，
+    不能存下来复用），所以做法是：用和当初筛选【相同】的关键词+筛选条件重搜 → 拦接口按
+    resumeNumber 定位到第几张卡片（DOM 顺序与接口顺序一致，已验证）→ 点开简历弹窗 → 窗口保持打开。
+    在独立线程里跑，不占用主浏览器/不自动发消息（避免封号）。
+    """
+    import threading
+
+    def _run() -> None:
+        import time as _t
+        bot = ProductCandidateSearcher({"browser_visible": True, "browser_mode": "managed"})
+        try:
+            bot.launch()
+            page = bot.page
+            page.goto(_SEARCH_URL, timeout=45000, wait_until="domcontentloaded")
+            page.wait_for_timeout(2500)
+            try:
+                bot._attach_resume_list_listener()
+            except Exception:
+                pass
+            bot.do_search(keyword)
+            # 关键：用和当初筛选【相同】的筛选条件重搜，才能把那个人重新搜到、序号才对得上
+            filters = filters or {}
+            if filters.get("city") or filters.get("min_education") or filters.get("min_experience_years"):
+                try:
+                    bot.apply_search_filters(
+                        city=filters.get("city") or "",
+                        min_education=filters.get("min_education") or "",
+                        min_experience_years=int(filters.get("min_experience_years") or 0),
+                    )
+                    page.wait_for_timeout(2500)  # 等筛选后的新搜索接口返回
+                except Exception:
+                    pass
+            found = False
+            for _ in range(max_pages):
+                selector = bot._wait_for_search_cards(timeout=12000)
+                if not selector:
+                    break
+                ordered = getattr(bot, "_api_ordered", []) or []
+                if resume_number in ordered:
+                    idx = ordered.index(resume_number)
+                    cards = page.query_selector_all(selector)
+                    if idx < len(cards):
+                        target = cards[idx].query_selector(".talent-basic-info__name") or cards[idx]
+                        try:
+                            target.scroll_into_view_if_needed()
+                        except Exception:
+                            pass
+                        try:
+                            target.click()
+                            found = True
+                        except Exception:
+                            pass
+                        break
+                if not bot._goto_next_page():
+                    break
+            if not found:
+                # 没自动定位到（可能结果变动/候选人下架）：停留在搜索结果页，用户可手动找
+                try:
+                    page.bring_to_front()
+                except Exception:
+                    pass
+            # 无论是否定位到，都保持窗口打开（用户可自行在智联里操作），直到用户关窗
+            while bot._context is not None and bot._context.pages:
+                _t.sleep(1)
+        except Exception:
+            pass
+        finally:
+            try:
+                bot._pw.stop()
+            except Exception:
+                pass
+
+    threading.Thread(target=_run, daemon=True).start()

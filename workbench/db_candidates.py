@@ -143,7 +143,7 @@ class CandidateMixin:
                 f"""
                 SELECT jc.id AS job_candidate_id,jc.stage,jc.owner,jc.note,jc.next_follow_up_at,
                     c.id AS candidate_id,c.name,c.title,c.location,c.education,c.experience,
-                    c.activity,c.skills,c.text,c.source_url,c.last_seen_at,
+                    c.activity,c.skills,c.text,c.source_url,c.last_seen_at,c.platform_uid,
                     c.age,c.expected_salary,c.certificates,c.full_text,
                     a.id AS assessment_id,a.status AS assessment_status,a.fit_score,
                     a.reasons_json,a.evidence_json,a.engine_version,a.created_at AS assessed_at

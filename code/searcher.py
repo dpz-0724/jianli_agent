@@ -6,11 +6,18 @@
 """
 from __future__ import annotations
 
+import random
 import re
 from urllib.parse import parse_qs, urljoin, urlparse
 
 from bot import BrowserBot, SELECTORS
 from matcher import SKILL_DICT, _has_word
+
+
+def _human_delay(page, base_ms: int) -> None:
+    """在固定等待上加随机抖动，模拟真人操作节奏，降低触发风控的概率。"""
+    jitter = random.randint(0, int(base_ms * 0.5))
+    page.wait_for_timeout(base_ms + jitter)
 
 EDU_PAT = re.compile(r"本科|硕士|博士|大专|中专/中技|中专|中技|高中|初中及以下|初中|全日制")
 EXP_PAT = re.compile(r"在校/应届|应届|一年以内|1-3年|3-5年|5-10年|10年以上|(\d{1,2})年")
@@ -103,7 +110,7 @@ class CandidateSearcher(BrowserBot):
             input_element.click()
             self.page.keyboard.type(keyword, delay=50)
         self.page.keyboard.press("Enter")
-        self.page.wait_for_timeout(2500)
+        _human_delay(self.page, 2500)
 
     def scrape_candidates(self, max_count=500, auto_scroll=True, scroll_rounds=50, on_progress=None):
         """抓取 IM 候选人流。该入口保留给兼容场景。"""
@@ -230,7 +237,7 @@ class CandidateSearcher(BrowserBot):
                 next_button = self.page.query_selector(selector)
                 if next_button:
                     next_button.click()
-                    self.page.wait_for_timeout(2200)
+                    _human_delay(self.page, 2200)
                     return True
             except Exception:
                 continue
