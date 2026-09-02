@@ -35,10 +35,19 @@ def _first(pattern, text):
     return match.group(0) if match else ""
 
 
+# 学历词/证书词不属于"技能"——它们各有专属字段，混进技能会污染关键词匹配
+_SKILL_EXCLUDE = frozenset({
+    "本科", "大专", "硕士", "博士", "全日制", "中专", "高中", "中专/中技", "初中",
+    "驾驶证", "会计证", "教师资格证", "电工证", "焊工证",
+})
+
+
 def _extract_skills(text):
     low = (text or "").lower()
     hits = []
     for word in SKILL_DICT:
+        if word in _SKILL_EXCLUDE:
+            continue
         if _has_word(low, word) and word not in hits:
             hits.append(word)
     return "|".join(hits)
@@ -466,13 +475,25 @@ _CERT_PAT = re.compile(
 
 
 def _extract_certificates(text):
-    """从候选人卡片文本/技能里识别其持有的证书。"""
+    """从候选人卡片文本/简历全文里识别其持有的证书（别名归一去重）。"""
+    # 同一证书的别名 → 规范名（更具体的优先，如 C1 归到 驾驶证(C1)）
+    canon = {
+        "驾照": "驾驶证", "驾驶证": "驾驶证", "c1": "驾驶证(C1)", "c2": "驾驶证(C2)",
+        "cpa": "注册会计师(CPA)", "注册会计师": "注册会计师(CPA)",
+        "英语四级": "英语四级", "cet-4": "英语四级", "英语六级": "英语六级", "cet-6": "英语六级",
+    }
     found = []
     for m in _CERT_PAT.finditer(text or ""):
-        v = m.group(1).upper() if re.fullmatch(r"[A-Za-z0-9-]+", m.group(1)) else m.group(1)
-        v = {"C1": "驾驶证(C1)", "C2": "驾驶证(C2)", "驾照": "驾驶证"}.get(m.group(1), v)
+        raw = m.group(1)
+        key = raw.lower()
+        v = canon.get(key)
+        if v is None:
+            v = raw.upper() if re.fullmatch(r"[A-Za-z0-9-]+", raw) else raw
         if v not in found:
             found.append(v)
+    # 若已有更具体的持证（如 驾驶证(C1)），去掉笼统的（驾驶证）
+    if any(f.startswith("驾驶证(") for f in found) and "驾驶证" in found:
+        found.remove("驾驶证")
     return "、".join(found)
 
 

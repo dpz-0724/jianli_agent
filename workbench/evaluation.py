@@ -537,6 +537,7 @@ def assess_candidate(candidate: dict, profile: RequirementProfile) -> CandidateA
             str(sanitized.get("certificates", "") or ""),
             str(sanitized.get("skills", "") or ""),
             str(sanitized.get("text", "") or ""),
+            str(sanitized.get("full_text", "") or ""),  # 完整简历里有"证书"栏，必须查
         ]).lower()
         for cert in profile.certificates:
             base = re.sub(r"\(.*?\)", "", cert).strip()

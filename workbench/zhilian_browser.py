@@ -35,6 +35,7 @@ class ProductCandidateSearcher(CandidateSearcher):
         self._resume_quota_exhausted = False
         self._api_by_name: dict[str, list[str]] = {}
         self._api_ordered: list[str] = []
+        self._api_certs: dict[str, list[list[str]]] = {}
 
     @staticmethod
     def _attempts(mode: str, custom_path: str = "") -> list[tuple[str, dict[str, Any]]]:
@@ -353,26 +354,31 @@ class ProductCandidateSearcher(CandidateSearcher):
         return text or ""
 
     def _attach_resume_list_listener(self) -> None:
-        """拦截搜索接口 /talent/search/list，拿到每个候选人的 resumeNumber。
+        """拦截搜索接口 /talent/search/list，拿到每个候选人的 resumeNumber 和证书。
         智联候选人卡片是纯 JS 按钮、DOM 里没有主页链接，唯一标识只在接口 JSON 里。
-        存两份：_api_by_name（按姓名→联系本人）、_api_ordered（按顺序→定位第几张卡）。"""
+        存：_api_by_name（姓名→resumeNumber队列→联系本人）、_api_ordered（按顺序→定位卡片）、
+        _api_certs（姓名→证书队列，卡片阶段就白拿证书，不用花额度深读）。"""
         def _on_response(resp) -> None:
             try:
                 if "talent/search/list" in resp.url and "json" in resp.headers.get("content-type", ""):
                     data = json.loads(resp.body())
                     lst = (data.get("data") or {}).get("list") or []
                     byname: dict[str, list[str]] = {}
+                    certs_byname: dict[str, list[list[str]]] = {}
                     ordered: list[str] = []
                     for item in lst:
                         name = (item.get("userName") or "").strip()
                         rn = (item.get("resumeNumber") or "").strip()
+                        certs = [str(c).strip() for c in (item.get("certificateNames") or []) if str(c).strip()]
                         if rn:
                             ordered.append(rn)
                         if name and rn:
                             byname.setdefault(name, []).append(rn)
+                            certs_byname.setdefault(name, []).append(certs)
                     if ordered:
                         self._api_by_name = byname
                         self._api_ordered = ordered
+                        self._api_certs = certs_byname
             except Exception:
                 pass
         self.page.on("response", _on_response)
@@ -386,6 +392,16 @@ class ProductCandidateSearcher(CandidateSearcher):
         if queue:
             return queue.pop(0)
         return ""
+
+    def _take_certs(self, name: str) -> list[str]:
+        """按姓名取一份证书列表（与 resumeNumber 同一顺序消耗，保持对齐）。"""
+        name = (name or "").strip()
+        if not name:
+            return []
+        queue = self._api_certs.get(name)
+        if queue:
+            return queue.pop(0)
+        return []
 
     def search_and_scrape_controlled(
         self,
@@ -463,6 +479,14 @@ class ProductCandidateSearcher(CandidateSearcher):
                 if rn:
                     candidate["resume_number"] = rn
                     candidate["platform_uid"] = rn
+                # 合并接口里的证书（卡片不展示证书，接口 certificateNames 能白拿一部分）
+                api_certs = self._take_certs(candidate.get("name"))
+                if api_certs:
+                    existing = [c for c in (candidate.get("certificates") or "").split("、") if c]
+                    for c in api_certs:
+                        if c not in existing:
+                            existing.append(c)
+                    candidate["certificates"] = "、".join(existing)
                 candidates.append(candidate)
                 page_new.append(candidate)
                 page_idx.append(idx)
@@ -498,6 +522,18 @@ class ProductCandidateSearcher(CandidateSearcher):
                             detail_count += 1
                             if text and len(text) > len(cand.get("text", "") or ""):
                                 cand["full_text"] = text
+                                # 从完整简历提取证书（卡片上没有"证书"栏，只有全文有）并合并
+                                try:
+                                    from searcher import _extract_certificates as _ec
+                                    certs = _ec(text)
+                                    if certs:
+                                        existing = [c for c in (cand.get("certificates") or "").split("、") if c]
+                                        for c in certs.split("、"):
+                                            if c and c not in existing:
+                                                existing.append(c)
+                                        cand["certificates"] = "、".join(existing)
+                                except Exception:
+                                    pass
                             # 深读间隔抖动：查看完整简历是最耗额度、最易触发风控的动作，模拟真人节奏
                             import random as _rnd
                             self.page.wait_for_timeout(1200 + _rnd.randint(0, 1500))
