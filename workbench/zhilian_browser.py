@@ -552,6 +552,16 @@ class ProductCandidateSearcher(CandidateSearcher):
 _SEARCH_URL = "https://rd6.zhaopin.com/app/search"
 
 
+def _contact_log(msg: str) -> None:
+    import os as _os, time as _t
+    try:
+        p = _os.path.join(_os.environ.get("TEMP", "."), "_contact_debug.log")
+        with open(p, "a", encoding="utf-8") as f:
+            f.write("[%s] %s\n" % (_t.strftime("%H:%M:%S"), msg))
+    except Exception:
+        pass
+
+
 def open_candidate_contact(resume_number: str, keyword: str, filters: dict | None = None, max_pages: int = 8) -> None:
     """在【可见、已登录】的智联窗口里打开指定候选人的简历卡（上面有"打招呼/打电话"按钮），
     供招聘人直接联系本人。智联没有干净的主页链接（详情要当次有效的加密串 resumeK/resumeT，
@@ -560,74 +570,93 @@ def open_candidate_contact(resume_number: str, keyword: str, filters: dict | Non
     在独立线程里跑，不占用主浏览器/不自动发消息（避免封号）。
     """
     import threading
+    _contact_log("open_candidate_contact 被调用，准备启动线程")
 
     def _run() -> None:
         import time as _t
-        bot = ProductCandidateSearcher({"browser_visible": True, "browser_mode": "managed"})
+        _contact_log("=== 联系流程 _run 开始执行 ===")  # 裸日志，不带格式化，排除格式化异常
         try:
+            _contact_log("参数 resumeNumber=%s keyword=%s" % (str(resume_number)[:16], str(keyword)))
+            bot = ProductCandidateSearcher({"browser_visible": True, "browser_mode": "managed"})
             bot.launch()
+            _contact_log("浏览器启动成功 mode=%s" % bot.active_browser_mode)
             page = bot.page
             page.goto(_SEARCH_URL, timeout=45000, wait_until="domcontentloaded")
             page.wait_for_timeout(2500)
+            _contact_log("已到搜索页 url=%s" % page.url[:50])
             try:
                 bot._attach_resume_list_listener()
-            except Exception:
-                pass
+            except Exception as e:
+                _contact_log("挂监听器失败: %s" % e)
             bot.do_search(keyword)
+            _contact_log("搜索完成")
             # 关键：用和当初筛选【相同】的筛选条件重搜，才能把那个人重新搜到、序号才对得上
-            filters = filters or {}
-            if filters.get("city") or filters.get("min_education") or filters.get("min_experience_years"):
+            # 注意：不能写 filters = filters or {} —— 会把闭包参数遮蔽成未赋值的局部变量
+            flt = dict(filters or {})
+            if flt.get("city") or flt.get("min_education") or flt.get("min_experience_years"):
                 try:
                     bot.apply_search_filters(
-                        city=filters.get("city") or "",
-                        min_education=filters.get("min_education") or "",
-                        min_experience_years=int(filters.get("min_experience_years") or 0),
+                        city=flt.get("city") or "",
+                        min_education=flt.get("min_education") or "",
+                        min_experience_years=int(flt.get("min_experience_years") or 0),
                     )
                     page.wait_for_timeout(2500)  # 等筛选后的新搜索接口返回
-                except Exception:
-                    pass
+                    _contact_log("筛选已应用")
+                except Exception as e:
+                    _contact_log("筛选失败: %s" % e)
             found = False
-            for _ in range(max_pages):
+            for pno in range(max_pages):
                 selector = bot._wait_for_search_cards(timeout=12000)
                 if not selector:
+                    _contact_log("第%d页: 没有卡片选择器，停" % (pno + 1))
                     break
                 ordered = getattr(bot, "_api_ordered", []) or []
+                _contact_log("第%d页: 接口捕获%d个resumeNumber, 目标%s 在里面=%s" % (
+                    pno + 1, len(ordered), resume_number[:12], resume_number in ordered))
                 if resume_number in ordered:
                     idx = ordered.index(resume_number)
                     cards = page.query_selector_all(selector)
+                    _contact_log("目标在第%d页第%d张，页面卡片数=%d" % (pno + 1, idx, len(cards)))
                     if idx < len(cards):
                         try:
                             cards[idx].scroll_into_view_if_needed()
                         except Exception:
                             pass
-                        # 用验证过的方式打开简历弹窗（点击+等正文加载），确保真的打开了本人界面
                         try:
                             found = bool(bot._open_resume_modal(cards[idx]))
-                        except Exception:
-                            found = True  # 点击已发出即算
+                            _contact_log("打开简历弹窗结果=%s" % found)
+                        except Exception as e:
+                            found = True
+                            _contact_log("打开弹窗异常但已点击: %s" % e)
                         break
                 if not bot._goto_next_page():
+                    _contact_log("第%d页后无下一页" % (pno + 1))
                     break
+            _contact_log("查找结束 found=%s" % found)
             # 打开后把窗口提到最前，确保用户看到本人简历卡（含打招呼/打电话按钮）
             try:
                 page.bring_to_front()
-            except Exception:
-                pass
+            except Exception as e:
+                _contact_log("置顶失败: %s" % e)
             if found:
-                # 再多等一会让简历正文渲染完整
                 try:
                     page.wait_for_timeout(1500)
                 except Exception:
                     pass
             # 无论是否定位到，都保持窗口打开（用户可自行在智联里操作），直到用户关窗
+            _contact_log("进入窗口保持")
             while bot._context is not None and bot._context.pages:
                 _t.sleep(1)
-        except Exception:
-            pass
+        except Exception as e:
+            import traceback
+            _contact_log("!!! 联系流程异常: %s\n%s" % (e, traceback.format_exc()[-400:]))
         finally:
+            _contact_log("联系流程结束")
             try:
                 bot._pw.stop()
             except Exception:
                 pass
 
-    threading.Thread(target=_run, daemon=True).start()
+    _t = threading.Thread(target=_run, daemon=True)
+    _t.start()
+    _contact_log("线程已 start，alive=%s" % _t.is_alive())
