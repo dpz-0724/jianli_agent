@@ -1,0 +1,6 @@
+# 简历智能体 运行依赖
+fastapi>=0.110        # Web 后端
+uvicorn>=0.29         # ASGI 服务器
+playwright==1.55.0    # 智联候选人抓取/联系浏览器
+cryptography>=42.0    # 离线授权（Ed25519 验签）
+pywebview>=5.0        # 桌面窗口（desktop_app.py）

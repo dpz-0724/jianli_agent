@@ -1,0 +1,14 @@
+# 内置 Chromium（655MB，不入库；构建时由 playwright install 生成）
+runtime-browsers/
+# 打包产物
+dist/
+build/
+*.zip
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+# 本地数据/日志
+*.log
+_contact_debug.log
